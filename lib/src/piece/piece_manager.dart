@@ -66,12 +66,12 @@ class PieceManager implements PieceProvider {
   Piece? selectPiece(String remotePeerId, List<int> remoteHavePieces,
       PieceProvider provider, final Set<int>? suggestPieces) {
     // Check if the current downloading piece can be used by this peer.
-    var avalidatePiece = <int>[];
+    var availablePiece = <int>[];
     // Prioritize downloading Suggest Pieces.
     if (suggestPieces != null && suggestPieces.isNotEmpty) {
       for (var i = 0; i < suggestPieces.length; i++) {
         var p = _pieces[suggestPieces.elementAt(i)];
-        if (p != null && p.haveAvalidateSubPiece()) {
+        if (p != null && p.haveAvailableSubPiece()) {
           processDownloadingPiece(p.index);
           return p;
         }
@@ -81,16 +81,16 @@ class PieceManager implements PieceProvider {
     for (var i = 0; i < _donwloadingPieces.length; i++) {
       var p = _pieces[_donwloadingPieces.elementAt(i)];
       if (p == null) continue;
-      if (p.containsAvalidatePeer(remotePeerId) && p.haveAvalidateSubPiece()) {
-        avalidatePiece.add(p.index);
+      if (p.containsAvailablePeer(remotePeerId) && p.haveAvailableSubPiece()) {
+        availablePiece.add(p.index);
       }
     }
 
     // If it is possible to download a piece that is currently being downloaded,
     // prioritize downloading that piece (following the principle of multiple
     // peers downloading the same piece to complete it as soon as possible).
-    if (avalidatePiece.isNotEmpty) {
-      candidatePieces = avalidatePiece;
+    if (availablePiece.isNotEmpty) {
+      candidatePieces = availablePiece;
     }
     var piece = _pieceSelector.selectPiece(
         remotePeerId, candidatePieces, this, _isFirst);

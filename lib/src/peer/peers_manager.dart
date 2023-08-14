@@ -364,8 +364,8 @@ class PeersManager with Holepunch, PEX {
   void _processAllowFast(dynamic source, int index) {
     var peer = source as Peer;
     var piece = _pieceProvider[index];
-    if (piece != null && piece.haveAvalidateSubPiece()) {
-      piece.addAvalidatePeer(peer.id);
+    if (piece != null && piece.haveAvailableSubPiece()) {
+      piece.addAvailablePeer(peer.id);
       _pieceManager.processDownloadingPiece(index);
       _requestPieces(source, index);
     }
@@ -406,7 +406,7 @@ class PeersManager with Holepunch, PEX {
 
     var completedPieces = peer.remoteCompletePieces;
     for (var index in completedPieces) {
-      _pieceProvider[index]?.removeAvalidatePeer(peer.id);
+      _pieceProvider[index]?.removeAvailablePeer(peer.id);
     }
     _pausedRemoteRequest.remove(peer.id);
     var tempIndex = [];
@@ -459,7 +459,7 @@ class PeersManager with Holepunch, PEX {
     Piece? piece;
     if (pieceIndex != -1) {
       piece = _pieceProvider[pieceIndex];
-      if (piece != null && !piece.haveAvalidateSubPiece()) {
+      if (piece != null && !piece.haveAvailableSubPiece()) {
         piece = _pieceManager.selectPiece(peer.id, peer.remoteCompletePieces,
             _pieceProvider, peer.remoteSuggestPieces);
       }
@@ -492,7 +492,7 @@ class PeersManager with Holepunch, PEX {
       var i = index;
       Timer.run(() => _fileManager.writeFile(i, begin, block));
       piece.subPieceDownloadComplete(begin);
-      if (piece.haveAvalidateSubPiece()) index = -1;
+      if (piece.haveAvailableSubPiece()) index = -1;
     }
     Timer.run(() => _requestPieces(peer, index));
   }
@@ -556,7 +556,7 @@ class PeersManager with Holepunch, PEX {
           peer.sendInterested(true);
         } else {
           flag = true;
-          _pieceProvider[index]?.addAvalidatePeer(peer.id);
+          _pieceProvider[index]?.addAvailablePeer(peer.id);
         }
       }
     }
@@ -569,14 +569,14 @@ class PeersManager with Holepunch, PEX {
     if (!choke) {
       var completedPieces = peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.addAvalidatePeer(peer.id);
+        _pieceProvider[index]?.addAvailablePeer(peer.id);
       }
       // Here, start notifying requests.
       Timer.run(() => _requestPieces(peer));
     } else {
       var completedPieces = peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.removeAvalidatePeer(peer.id);
+        _pieceProvider[index]?.removeAvailablePeer(peer.id);
       }
     }
   }

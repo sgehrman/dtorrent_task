@@ -119,11 +119,11 @@ void main() {
 
     test('piece length less than 16kb', () {
       var p = Piece('aaaaaaa', 0, DEFAULT_REQUEST_LENGTH - 100);
-      var l = p.avalidateSubPieceCount;
+      var l = p.availableSubPieceCount;
       assert(l == 1);
       var sp = p.popSubPiece();
       assert(sp == 0);
-      assert(!p.haveAvalidateSubPiece());
+      assert(!p.haveAvailableSubPiece());
     });
   });
 
