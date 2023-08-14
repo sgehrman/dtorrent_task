@@ -3,11 +3,11 @@ Dart library for implementing BitTorrent client.
 
 Whole Dart Torrent client contains serival parts :
 - [Bencode](https://pub.dev/packages/b_encode_decode) 
-- [Tracker](https://pub.dev/packages/torrent_tracker)
-- [DHT](https://pub.dev/packages/dht_dart)
+- [Tracker](https://pub.dev/packages/dtorrent_tracker)
+- [DHT](https://pub.dev/packages/bittorrent_dht)
 - [Torrent model](https://pub.dev/packages/dtorrent_parser)
 - [Common library](https://pub.dev/packages/dtorrent_common)
-- [UTP](https://pub.dev/packages/utp)
+- [UTP](https://pub.dev/packages/utp_protocol)
 
 This package implements regular BitTorrent Protocol and manage above packages to work together for downloading.
 
@@ -33,7 +33,7 @@ This package need to dependency [`dtorrent_parser`](https://pub.dev/packages/dto
 ```
 dependencies:
   dtorrent_parser : ^1.0.4
-  torrent_task : '>= 0.2.1 < 2.0.0'
+  dtorrent_task : '>= 0.2.1 < 2.0.0'
 ```
 
 First , create a `Torrent` model via .torrent file:

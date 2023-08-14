@@ -35,3 +35,4 @@
 
 ## 0.3.1
 - nullsafety
+- pub.dev fixes
