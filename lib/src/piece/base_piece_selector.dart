@@ -23,8 +23,8 @@ class BasePieceSelector implements PieceSelector {
     for (var i = 0; i < piecesIndexList.length; i++) {
       var p = provider[piecesIndexList[i]];
       if (p != null &&
-          p.haveAvalidateSubPiece() &&
-          p.containsAvalidatePeer(remotePeerId)) {
+          p.haveAvailableSubPiece() &&
+          p.containsAvailablePeer(remotePeerId)) {
         a = p;
         startIndex = i;
         break;
@@ -35,26 +35,26 @@ class BasePieceSelector implements PieceSelector {
     for (var i = startIndex; i < piecesIndexList.length; i++) {
       var p = provider[piecesIndexList[i]];
       if (p == null ||
-          !p.haveAvalidateSubPiece() ||
-          !p.containsAvalidatePeer(remotePeerId)) {
+          !p.haveAvailableSubPiece() ||
+          !p.containsAvailablePeer(remotePeerId)) {
         continue;
       }
       // Select rare pieces
-      if (a!.avalidatePeersCount > p.avalidatePeersCount) {
+      if (a!.availablePeersCount > p.availablePeersCount) {
         if (!random) return p;
         maxList.clear();
         a = p;
         maxList.add(a);
       } else {
-        if (a.avalidatePeersCount == p.avalidatePeersCount) {
+        if (a.availablePeersCount == p.availablePeersCount) {
           // If multiple Pieces have the same number of available downloading Peers, prioritize the one with the fewest remaining Sub Pieces.
-          if (p.avalidateSubPieceCount < a.avalidateSubPieceCount) {
+          if (p.availableSubPieceCount < a.availableSubPieceCount) {
             if (!random) return p;
             maxList.clear();
             a = p;
             maxList.add(a);
           } else {
-            if (p.avalidateSubPieceCount == a.avalidateSubPieceCount) {
+            if (p.availableSubPieceCount == a.availableSubPieceCount) {
               if (!random) return p;
               maxList.add(p);
               a = p;

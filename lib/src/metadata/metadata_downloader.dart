@@ -47,7 +47,7 @@ class MetadataDownloader
 
   final Set<Peer> _activePeers = {};
 
-  final Set<Peer> _avalidatedPeers = {};
+  final Set<Peer> _availablePeers = {};
 
   final Set<CompactAddress> _peersAddress = {};
 
@@ -96,7 +96,7 @@ class MetadataDownloader
       fs.add(peer.dispose());
     }
     _activePeers.clear();
-    _avalidatedPeers.clear();
+    _availablePeers.clear();
     _peersAddress.clear();
     _incomingAddress.clear();
     _metaDataPieces.clear();
@@ -240,7 +240,7 @@ class MetadataDownloader
 
       var metaDataEventId = peer.getExtendedEventId('ut_metadata');
       if (metaDataEventId != null && _metaDataSize != null) {
-        _avalidatedPeers.add(peer);
+        _availablePeers.add(peer);
         _requestMetaData(peer);
       }
     }
@@ -303,16 +303,16 @@ class MetadataDownloader
     }
   }
 
-  Peer? _randomAvalidatedPeer() {
-    if (_avalidatedPeers.isEmpty) return null;
-    var n = _avalidatedPeers.length;
+  Peer? _randomAvailablePeer() {
+    if (_availablePeers.isEmpty) return null;
+    var n = _availablePeers.length;
     var index = randomInt(n);
-    return _avalidatedPeers.elementAt(index);
+    return _availablePeers.elementAt(index);
   }
 
   void _requestMetaData([Peer? peer]) {
     if (_metaDataPieces.isNotEmpty) {
-      peer ??= _randomAvalidatedPeer();
+      peer ??= _randomAvailablePeer();
       if (peer == null) return;
       var piece = _metaDataPieces.removeFirst();
       var msg = createRequestMessage(piece);

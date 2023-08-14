@@ -9,7 +9,7 @@ class Piece {
 
   final int index;
 
-  final Set<String> _avalidatePeers = <String>{};
+  final Set<String> _availablePeers = <String>{};
 
   late Queue<int> _subPiecesQueue;
 
@@ -57,14 +57,14 @@ class Piece {
 
   int get writtingSubPiecesCount => _writtingSubPieces.length;
 
-  bool haveAvalidateSubPiece() {
+  bool haveAvailableSubPiece() {
     if (_subPiecesCount == 0) return false;
     return _subPiecesQueue.isNotEmpty;
   }
 
-  int get avalidatePeersCount => _avalidatePeers.length;
+  int get availablePeersCount => _availablePeers.length;
 
-  int get avalidateSubPieceCount {
+  int get availableSubPieceCount {
     if (_subPiecesCount == 0) return 0;
     return _subPiecesQueue.length;
   }
@@ -92,7 +92,7 @@ class Piece {
     _writtingSubPieces.remove(subindex);
     var re = _downloadedSubPieces.add(subindex);
     if (isCompleted) {
-      clearAvalidatePeer();
+      clearAvailablePeer();
     }
     return re;
   }
@@ -106,24 +106,24 @@ class Piece {
     return subPieceQueue.contains(subIndex);
   }
 
-  bool containsAvalidatePeer(String id) {
-    return _avalidatePeers.contains(id);
+  bool containsAvailablePeer(String id) {
+    return _availablePeers.contains(id);
   }
 
   bool removeSubpiece(int subIndex) {
     return subPieceQueue.remove(subIndex);
   }
 
-  bool addAvalidatePeer(String id) {
-    return _avalidatePeers.add(id);
+  bool addAvailablePeer(String id) {
+    return _availablePeers.add(id);
   }
 
-  bool removeAvalidatePeer(String id) {
-    return _avalidatePeers.remove(id);
+  bool removeAvailablePeer(String id) {
+    return _availablePeers.remove(id);
   }
 
-  void clearAvalidatePeer() {
-    _avalidatePeers.clear();
+  void clearAvailablePeer() {
+    _availablePeers.clear();
   }
 
   int? popSubPiece() {
@@ -159,7 +159,7 @@ class Piece {
   void dispose() {
     if (isDisposed) return;
     _disposed = true;
-    _avalidatePeers.clear();
+    _availablePeers.clear();
     _downloadedSubPieces.clear();
     _writtingSubPieces.clear();
   }
