@@ -19,7 +19,10 @@ class DownloadFileManager {
 
   final Set<DownloadFile> _files = {};
 
+  Set<DownloadFile> get files => _files;
+
   List<List<DownloadFile>?>? _piece2fileMap;
+  List<List<DownloadFile>?>? get piece2fileMap => _piece2fileMap;
 
   final Map<String, List<int>?> _file2pieceMap = {};
 
@@ -149,7 +152,8 @@ class DownloadFileManager {
   void _initFileMap(String directory) {
     for (var i = 0; i < metainfo.files.length; i++) {
       var file = metainfo.files[i];
-      var df = DownloadFile(directory + file.path, file.offset, file.length);
+      var df = DownloadFile(
+          directory + file.path, file.offset, file.length, file.name);
       _files.add(df);
       var fs = df.start;
       var fe = df.end;
