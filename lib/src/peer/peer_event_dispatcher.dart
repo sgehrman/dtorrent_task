@@ -1,14 +1,16 @@
 import 'dart:async';
 
+import 'package:dtorrent_task/src/peer/peer_base.dart';
+
 import 'bitfield.dart';
 
-typedef PieceConfigHandle = void Function(
-    dynamic source, int index, int begin, int length);
-typedef NoneParamHandle = void Function(dynamic source);
+typedef PieceConfigHandle<T extends Peer> = void Function(
+    T source, int index, int begin, int length);
+typedef NoneParamHandle<T extends Peer> = void Function(T source);
 
-typedef BoolHandle = void Function(dynamic source, bool value);
+typedef BoolHandle<T extends Peer> = void Function(T source, bool value);
 
-typedef SingleIntHandle = void Function(dynamic source, int value);
+typedef SingleIntHandle<T extends Peer> = void Function(T source, int value);
 
 const PEER_EVENT_CONNECTED = 'connected';
 const PEER_EVENT_DISPOSE = 'close';
@@ -29,7 +31,7 @@ const PEER_EVENT_ALLOW_FAST = 'allow_fast';
 const PEER_EVENT_REJECT_REQUEST = 'reject_request';
 
 // A mixin specifically responsible for adding and removing Peer event callback methods.
-mixin PeerEventDispatcher {
+mixin PeerEventDispatcher<T extends Peer> {
   /// Map of all event callback methods.
   final _handleFunctions = <String, Set<Function>>{};
 
@@ -172,7 +174,7 @@ mixin PeerEventDispatcher {
   }
 
   /// Add `allow fast`  event handler
-  bool onAllowFast(SingleIntHandle handle) {
+  bool onAllowFast(SingleIntHandle<T> handle) {
     return _onSingleIntCallback(handle, PEER_EVENT_ALLOW_FAST);
   }
 
@@ -232,39 +234,39 @@ mixin PeerEventDispatcher {
   }
 
   /// Add `remote have`  event handler
-  bool onHave(void Function(dynamic source, List<int> indices) handle) {
+  bool onHave(void Function(T source, List<int> indices) handle) {
     var list = _getFunctionSet(PEER_EVENT_HAVE);
     return list.add(handle);
   }
 
   /// Remove `remote have`  event handler
-  bool offHave(void Function(dynamic source, List<int> indices) handle) {
+  bool offHave(void Function(T source, List<int> indices) handle) {
     var list = _getFunctionSet(PEER_EVENT_HAVE);
     return list.remove(handle);
   }
 
   /// Add `receive remote piece`  event handler
   bool onPiece(
-      Function(dynamic source, int index, int begin, List<int> block) handle) {
+      Function(T source, int index, int begin, List<int> block) handle) {
     var list = _getFunctionSet(PEER_EVENT_PIECE);
     return list.add(handle);
   }
 
   /// Remove `receive remote piece`  event handler
   bool offPiece(
-      Function(dynamic source, int index, int begin, List<int> block) handle) {
+      Function(T source, int index, int begin, List<int> block) handle) {
     var list = _getFunctionSet(PEER_EVENT_PIECE);
     return list.remove(handle);
   }
 
   /// Add `remote bitfield`  event handler
-  bool onBitfield(Function(dynamic source, Bitfield bitfield) handle) {
+  bool onBitfield(Function(T source, Bitfield bitfield) handle) {
     var list = _getFunctionSet(PEER_EVENT_BITFIELD);
     return list.add(handle);
   }
 
   /// Remove `remote bitfield`  event handler
-  bool offBitfield(Function(dynamic source, Bitfield bitfield) handle) {
+  bool offBitfield(Function(T source, Bitfield bitfield) handle) {
     var list = _getFunctionSet(PEER_EVENT_BITFIELD);
     return list.remove(handle);
   }
@@ -311,14 +313,14 @@ mixin PeerEventDispatcher {
 
   /// Add `handshake` event handler
   bool onHandShake(
-      void Function(dynamic source, String remotePeerId, dynamic data) handle) {
+      void Function(T source, String remotePeerId, dynamic data) handle) {
     var list = _getFunctionSet(PEER_EVENT_HANDSHAKE);
     return list.add(handle);
   }
 
   /// Remove `handshake` event handler
   bool offHandShake(
-      void Function(dynamic source, String remotePeerId, dynamic data) handle) {
+      void Function(T source, String remotePeerId, dynamic data) handle) {
     var list = _getFunctionSet(PEER_EVENT_HANDSHAKE);
     return list.remove(handle);
   }
@@ -334,13 +336,13 @@ mixin PeerEventDispatcher {
   }
 
   /// Add `dispose` event handler
-  bool onDispose(Function(dynamic source, [dynamic reason]) handle) {
+  bool onDispose(Function(T source, [dynamic reason]) handle) {
     var list = _getFunctionSet(PEER_EVENT_DISPOSE);
     return list.add(handle);
   }
 
   /// Remove `dispose` event handler
-  bool offDispose(Function(dynamic source, [dynamic reason]) handle) {
+  bool offDispose(Function(T source, [dynamic reason]) handle) {
     var list = _getFunctionSet(PEER_EVENT_DISPOSE);
     return list.remove(handle);
   }
@@ -375,7 +377,7 @@ mixin PeerEventDispatcher {
     return list.remove(handle);
   }
 
-  bool _onSingleIntCallback(SingleIntHandle handle, String type) {
+  bool _onSingleIntCallback(SingleIntHandle<T> handle, String type) {
     var list = _getFunctionSet(type);
     return list.add(handle);
   }
