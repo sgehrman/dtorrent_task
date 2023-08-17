@@ -10,6 +10,7 @@ typedef FileDownloadCompleteHandle = void Function(String filePath);
 
 class DownloadFile {
   final String filePath;
+  final String originalFileName;
 
   final int start;
 
@@ -25,7 +26,7 @@ class DownloadFile {
 
   StreamSubscription? _streamSubscription;
 
-  DownloadFile(this.filePath, this.start, this.length);
+  DownloadFile(this.filePath, this.start, this.length, this.originalFileName);
 
   int get end => start + length;
 

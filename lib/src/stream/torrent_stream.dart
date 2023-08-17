@@ -3,17 +3,39 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/piece/base_piece_selector.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/httpserver/server.dart';
+import 'package:dtorrent_task/src/lsd/lsd.dart';
+import 'package:dtorrent_task/src/piece/base_piece_selector.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
+import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:utp_protocol/utp_protocol.dart';
 
-class TorrentStream implements AnnounceOptionsProvider {
+const MAX_PEERS = 50;
+const MAX_IN_PEERS = 10;
+
+class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
   static InternetAddress LOCAL_ADDRESS =
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
 
+  final Set<void Function()> _taskCompleteHandlers = {};
+
+  final Set<void Function(String filePath)> _fileCompleteHandlers = {};
+
+  final Set<void Function()> _stopHandlers = {};
+
+  final Set<void Function()> _resumeHandlers = {};
+
+  final Set<void Function()> _pauseHandlers = {};
+
   TorrentAnnounceTracker? _tracker;
+
+  DHT? _dht = DHT();
+
+  LSD? _lsd;
+
   StateFile? _stateFile;
 
   PieceManager? _pieceManager;
@@ -21,10 +43,12 @@ class TorrentStream implements AnnounceOptionsProvider {
   DownloadFileManager? _fileManager;
 
   PeersManager? _peersManager;
+  StreamingServer? _streamingServer;
 
   final Torrent _metaInfo;
 
   final String _savePath;
+
   final Set<String> _peerIds = {};
 
   late String
@@ -35,27 +59,68 @@ class TorrentStream implements AnnounceOptionsProvider {
   final Set<InternetAddress> _comingIp = {};
 
   bool _paused = false;
-  late String _infoHashString;
-  StreamController _fileStream = StreamController();
-  Stream get fileStream => _fileStream.stream;
-
-  void seek(int position) {
-    if (position < 1 || position > _metaInfo.length) return;
-    var pieceIndex = position ~/ _metaInfo.pieceLength;
-    // _pieceManager
-  }
 
   TorrentStream(this._metaInfo, this._savePath) {
     _peerId = generatePeerId();
   }
-  final Set<void Function()> _taskCompleteHandlers = {};
 
-  void _fireTaskComplete() {
-    for (var element in _taskCompleteHandlers) {
-      Timer.run(() => element());
+  @override
+  double get averageDownloadSpeed {
+    if (_peersManager != null) {
+      return _peersManager!.averageDownloadSpeed;
+    } else {
+      return 0.0;
     }
   }
 
+  @override
+  double get averageUploadSpeed {
+    if (_peersManager != null) {
+      return _peersManager!.averageUploadSpeed;
+    } else {
+      return 0.0;
+    }
+  }
+
+  @override
+  double get currentDownloadSpeed {
+    if (_peersManager != null) {
+      return _peersManager!.currentDownloadSpeed;
+    } else {
+      return 0.0;
+    }
+  }
+
+  @override
+  double get uploadSpeed {
+    if (_peersManager != null) {
+      return _peersManager!.uploadSpeed;
+    } else {
+      return 0.0;
+    }
+  }
+
+  late String _infoHashString;
+
+  Timer? _dhtRepeatTimer;
+
+  Future<PeersManager> _init(Torrent model, String savePath) async {
+    _lsd = LSD(model.infoHash, _peerId);
+    _infoHashString = String.fromCharCodes(model.infoHashBuffer);
+    _tracker ??= TorrentAnnounceTracker(this);
+    _stateFile ??= await StateFile.getStateFile(savePath, model);
+    _pieceManager ??= PieceManager.createPieceManager(
+        BasePieceSelector(), model, _stateFile!.bitfield);
+    _fileManager ??= await DownloadFileManager.createFileManager(
+        model, savePath, _stateFile!);
+    _peersManager ??= PeersManager(
+        _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
+    _streamingServer = StreamingServer(_fileManager!, this);
+
+    return _peersManager!;
+  }
+
+  @override
   void addPeer(CompactAddress address, PeerSource source,
       {PeerType? type, Socket? socket}) {
     _peersManager?.addNewPeerAddress(address, source,
@@ -67,14 +132,6 @@ class TorrentStream implements AnnounceOptionsProvider {
         ?.disposeAllSeeder('Download complete,disconnect seeder');
     await _tracker?.complete();
     _fireTaskComplete();
-  }
-
-  final Set<void Function(String filePath)> _fileCompleteHandlers = {};
-
-  void _fireFileComplete(String filepath) {
-    for (var handler in _fileCompleteHandlers) {
-      Timer.run(() => handler(filepath));
-    }
   }
 
   void _whenFileDownloadComplete(String filePath) {
@@ -109,6 +166,24 @@ class TorrentStream implements AnnounceOptionsProvider {
     }
   }
 
+  void _hookUTP(UTPSocket socket) {
+    if (socket.remoteAddress == LOCAL_ADDRESS) {
+      socket.close();
+      return;
+    }
+    if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.address)) {
+      socket.close();
+      return;
+    }
+    log('incoming connect: ${socket.remoteAddress.address}:${socket.remotePort}',
+        name: runtimeType.toString());
+    _peersManager?.addNewPeerAddress(
+        CompactAddress(socket.remoteAddress, socket.remotePort),
+        PeerSource.incoming,
+        type: PeerType.UTP,
+        socket: socket);
+  }
+
   void _hookInPeer(Socket socket) {
     if (socket.remoteAddress == LOCAL_ADDRESS) {
       socket.close();
@@ -127,29 +202,80 @@ class TorrentStream implements AnnounceOptionsProvider {
         socket: socket);
   }
 
-  Future<PeersManager> _init(Torrent model, String savePath) async {
-    _infoHashString = String.fromCharCodes(model.infoHashBuffer);
-    _tracker ??= TorrentAnnounceTracker(this);
-    _stateFile ??= await StateFile.getStateFile(savePath, model);
-    _pieceManager ??= PieceManager.createPieceManager(
-        BasePieceSelector(), model, _stateFile!.bitfield);
-    _fileManager ??= await DownloadFileManager.createFileManager(
-        model, savePath, _stateFile!);
-    _peersManager ??= PeersManager(
-        _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
-    return _peersManager!;
+  Stream<List<int>>? createStream(
+      {int filePosition = 0, int? endPosition, String? fileName}) {
+    if (_fileManager == null || _peersManager == null) return null;
+    TorrentFile? file;
+    if (fileName != null) {
+      file = _fileManager!.metainfo.files
+          .firstWhere((file) => file.name == fileName);
+    } else {
+      file = _fileManager!.metainfo.files.firstWhere(
+        (file) => file.name.contains('mp4'),
+        orElse: () => _fileManager!.metainfo.files.first,
+      );
+    }
+    var localFile = _fileManager?.files.firstWhere(
+        (downloadedFile) => downloadedFile.originalFileName == file?.name);
+    var bytePosition = file.offset + filePosition;
+    endPosition ??= file.length;
+    endPosition = file.offset + endPosition;
+    var startPieceIndex = bytePosition ~/ _fileManager!.metainfo.pieceLength;
+    var endPieceIndex = endPosition ~/ _fileManager!.metainfo.pieceLength;
+    var requiredPieces = _pieceManager!.pieces.entries
+        .where((piece) =>
+            piece.key > startPieceIndex &&
+            piece.key < endPieceIndex &&
+            _fileManager!.piece2fileMap?[piece.key] != null &&
+            _fileManager!.piece2fileMap![piece.key]!.contains(localFile))
+        .toList();
+
+    // _pieceManager?.clearDownloadingPieces();
+    // for (var peer in _peersManager!.activePeers) {
+    //   for (var piece in requiredPieces) {
+    //     if (!_pieceManager!.downloadingPieces.contains(piece.key)) {
+    //       _peersManager!.requestPieces(peer, piece.key);
+    //     }
+    //   }
+    // }
+
+    if (localFile?.filePath == null) return null;
+    return File(localFile!.filePath).openRead(filePosition, endPosition);
   }
 
+  @override
+  void pause() {
+    if (_paused) return;
+    _paused = true;
+    _peersManager?.pause();
+    _fireTaskPaused();
+  }
+
+  @override
+  bool get isPaused => _paused;
+
+  @override
+  void resume() {
+    if (isPaused) {
+      _paused = false;
+      _peersManager?.resume();
+      _fireTaskResume();
+    }
+  }
+
+  @override
   Future start() async {
     // Incoming peer:
+    _streamingServer?.start();
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
+    await _streamingServer?.start();
     _serverSocket?.listen(_hookInPeer);
 
     var map = {};
     map['name'] = _metaInfo.name;
     map['tcp_socket'] = _serverSocket?.port;
-    map['comoplete_pieces'] = List.from(_stateFile!.bitfield.completedPieces);
+    map['complete_pieces'] = List.from(_stateFile!.bitfield.completedPieces);
     map['total_pieces_num'] = _stateFile!.bitfield.piecesNum;
     map['downloaded'] = _stateFile!.downloaded;
     map['uploaded'] = _stateFile!.uploaded;
@@ -158,6 +284,9 @@ class TorrentStream implements AnnounceOptionsProvider {
     _tracker?.onPeerEvent(_processTrackerPeerEvent);
     _peersManager?.onAllComplete(_whenTaskDownloadComplete);
     _fileManager?.onFileComplete(_whenFileDownloadComplete);
+
+    _lsd?.onLSDPeer(_processLSDPeerEvent);
+    _lsd?.start();
 
     // _dht?.announce(
     //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
@@ -173,6 +302,47 @@ class TorrentStream implements AnnounceOptionsProvider {
   }
 
   @override
+  Future stop([bool force = false]) async {
+    await _tracker?.stop(force);
+    Set<Function>? tempHandler = Set<Function>.from(_stopHandlers);
+    for (var element in tempHandler) {
+      Timer.run(() => element());
+    }
+    tempHandler.clear();
+    tempHandler = null;
+  }
+
+  Future dispose() async {
+    _dhtRepeatTimer?.cancel();
+    _dhtRepeatTimer = null;
+    _fileCompleteHandlers.clear();
+    _taskCompleteHandlers.clear();
+    _pauseHandlers.clear();
+    _resumeHandlers.clear();
+    _stopHandlers.clear();
+    _tracker?.offPeerEvent(_processTrackerPeerEvent);
+    _peersManager?.offAllComplete(_whenTaskDownloadComplete);
+    _fileManager?.offFileComplete(_whenFileDownloadComplete);
+    // This is in order, first stop the tracker, then stop listening on the server socket and all peers, finally close the file system.
+    await _tracker?.dispose();
+    _tracker = null;
+    await _peersManager?.dispose();
+    _peersManager = null;
+    await _serverSocket?.close();
+    _serverSocket = null;
+    await _fileManager?.close();
+    _fileManager = null;
+    await _dht?.stop();
+    _dht = null;
+
+    _lsd?.close();
+    _lsd = null;
+    _peerIds.clear();
+    _comingIp.clear();
+    return;
+  }
+
+  @override
   Future<Map<String, dynamic>> getOptions(Uri uri, String infoHash) {
     var map = {
       'downloaded': _stateFile?.downloaded,
@@ -184,5 +354,153 @@ class TorrentStream implements AnnounceOptionsProvider {
       'port': _serverSocket?.port
     };
     return Future.value(map);
+  }
+
+  @override
+  bool offFileComplete(void Function(String filepath) handler) {
+    return _fileCompleteHandlers.remove(handler);
+  }
+
+  void _fireFileComplete(String filepath) {
+    for (var handler in _fileCompleteHandlers) {
+      Timer.run(() => handler(filepath));
+    }
+  }
+
+  @override
+  bool offPause(void Function() handler) {
+    return _pauseHandlers.remove(handler);
+  }
+
+  @override
+  bool offResume(void Function() handler) {
+    return _resumeHandlers.remove(handler);
+  }
+
+  @override
+  bool offStop(void Function() handler) {
+    return _stopHandlers.remove(handler);
+  }
+
+  @override
+  bool offTaskComplete(void Function() handler) {
+    return _taskCompleteHandlers.remove(handler);
+  }
+
+  @override
+  bool onFileComplete(void Function(String filepath) handler) {
+    return _fileCompleteHandlers.add(handler);
+  }
+
+  @override
+  bool onPause(void Function() handler) {
+    return _pauseHandlers.add(handler);
+  }
+
+  @override
+  bool onResume(void Function() handler) {
+    return _resumeHandlers.add(handler);
+  }
+
+  @override
+  bool onStop(void Function() handler) {
+    return _stopHandlers.add(handler);
+  }
+
+  @override
+  bool onTaskComplete(void Function() handler) {
+    return _taskCompleteHandlers.add(handler);
+  }
+
+  void _fireTaskComplete() {
+    for (var element in _taskCompleteHandlers) {
+      Timer.run(() => element());
+    }
+  }
+
+  @override
+  int? get downloaded => _fileManager?.downloaded;
+
+  @override
+  double get progress {
+    var d = downloaded;
+    if (d == null) return 0.0;
+    var l = _metaInfo.length;
+    return d / l;
+  }
+
+  void _fireTaskPaused() {
+    for (var element in _pauseHandlers) {
+      Timer.run(() => element());
+    }
+  }
+
+  void _fireTaskResume() {
+    for (var element in _resumeHandlers) {
+      Timer.run(() => element());
+    }
+  }
+
+  @override
+  int get allPeersNumber {
+    if (_peersManager != null) {
+      return _peersManager!.peersNumber;
+    } else {
+      return 0;
+    }
+  }
+
+  @override
+  void addDHTNode(Uri url) {
+    _dht?.addBootstrapNode(url);
+  }
+
+  @override
+  int get connectedPeersNumber {
+    if (_peersManager != null) {
+      return _peersManager!.connectedPeersNumber;
+    } else {
+      return 0;
+    }
+  }
+
+  @override
+  int get seederNumber {
+    if (_peersManager != null) {
+      return _peersManager!.seederNumber;
+    } else {
+      return 0;
+    }
+  }
+
+  // TODO debug:
+  @override
+  double get utpDownloadSpeed {
+    if (_peersManager == null) return 0.0;
+    return _peersManager!.utpDownloadSpeed;
+  }
+
+// TODO debug:
+  @override
+  double get utpUploadSpeed {
+    if (_peersManager == null) return 0.0;
+    return _peersManager!.utpUploadSpeed;
+  }
+
+// TODO debug:
+  @override
+  int get utpPeerCount {
+    if (_peersManager == null) return 0;
+    return _peersManager!.utpPeerCount;
+  }
+
+  @override
+  void startAnnounceUrl(Uri url, Uint8List infoHash) {
+    _tracker?.runTracker(url, infoHash);
+  }
+
+  @override
+  void requestPeersFromDHT() {
+    _dht?.requestPeers(String.fromCharCodes(_metaInfo.infoHashBuffer));
   }
 }

@@ -12,12 +12,14 @@ class PieceManager implements PieceProvider {
   bool _isFirst = true;
 
   final Map<int, Piece> _pieces = {};
+  Map<int, Piece> get pieces => _pieces;
 
   // final Set<int> _completedPieces = <int>{};
 
   final List<PieceCompleteHandle> _pieceCompleteHandles = [];
 
   final Set<int> _downloadingPieces = <int>{};
+  Set<int> get downloadingPieces => _downloadingPieces;
 
   final PieceSelector _pieceSelector;
 
