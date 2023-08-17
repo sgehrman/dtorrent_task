@@ -142,7 +142,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
       _peerId; // This is the generated local peer ID, which is different from the ID used in the Peer class.
 
   ServerSocket? _serverSocket;
-  ServerUTPSocket? _utpServer;
+  // ServerUTPSocket? _utpServer;
 
   final Set<InternetAddress> _cominIp = {};
 
@@ -314,10 +314,10 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
     _serverSocket?.listen(_hookInPeer);
-    _utpServer ??= await ServerUTPSocket.bind(
-        InternetAddress.anyIPv4, _serverSocket?.port ?? 0);
-    _utpServer?.listen(_hookUTP);
-    print(_utpServer?.port);
+    // _utpServer ??= await ServerUTPSocket.bind(
+    //     InternetAddress.anyIPv4, _serverSocket?.port ?? 0);
+    // _utpServer?.listen(_hookUTP);
+    // print(_utpServer?.port);
 
     var map = {};
     map['name'] = _metaInfo.name;
@@ -333,14 +333,14 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
     _fileManager?.onFileComplete(_whenFileDownloadComplete);
 
     _lsd?.onLSDPeer(_processLSDPeerEvent);
-    _lsd?.port = _utpServer?.port;
+    // _lsd?.port = _utpServer?.port;
     _lsd?.start();
 
-    _dht?.announce(
-        String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
-    _dht?.onNewPeer(_processDHTPeer);
+    // _dht?.announce(
+    //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
+    // _dht?.onNewPeer(_processDHTPeer);
     // ignore: unawaited_futures
-    _dht?.bootstrap();
+    // _dht?.bootstrap();
     if (_fileManager != null && _fileManager!.isAllComplete) {
       // ignore: unawaited_futures
       _tracker?.complete();
