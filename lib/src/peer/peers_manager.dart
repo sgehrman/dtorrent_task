@@ -273,7 +273,7 @@ class PeersManager with Holepunch, PEX {
         peer = Peer.newTCPPeer(_localPeerId, address, _metaInfo.infoHashBuffer,
             _metaInfo.pieces.length, socket, source);
       }
-      if (type == null || type == PeerType.UTP) {
+      if (type == PeerType.UTP) {
         peer = Peer.newUTPPeer(_localPeerId, address, _metaInfo.infoHashBuffer,
             _metaInfo.pieces.length, socket, source);
       }
