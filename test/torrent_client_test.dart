@@ -102,10 +102,10 @@ void main() {
   group('Piece test - ', () {
     test('create sub-pieces', () async {
       // Simulate bitfields that are divisible.
-      var totalsize = 163840;
+      var totalSize = 163840;
       var remain = Random().nextInt(100);
-      totalsize = totalsize + remain;
-      var p = Piece('aaaaaaa', 0, totalsize);
+      totalSize = totalSize + remain;
+      var p = Piece('aaaaaaa', 0, totalSize);
       var size = DEFAULT_REQUEST_LENGTH;
       var subIndex = p.popSubPiece();
       subIndex = p.popLastSubPiece();

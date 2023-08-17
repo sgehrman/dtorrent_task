@@ -27,10 +27,8 @@ void main() async {
       print('Task Stopped');
     });
     var map = await task.start();
-
-    // ignore: unawaited_futures
-    findPublicTrackers().listen((alist) {
-      for (var element in alist) {
+    findPublicTrackers().listen((announceUrls) {
+      for (var element in announceUrls) {
         task.startAnnounceUrl(element, model.infoHashBuffer);
       }
     });
@@ -48,15 +46,17 @@ void main() async {
       var ds = ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
       var ps = ((task.uploadSpeed) * 1000 / 1024).toStringAsFixed(2);
 
-      var utpd = ((task.utpDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
-      var utpu = ((task.utpUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
-      var utpc = task.utpPeerCount;
+      var utpDownloadSpeed =
+          ((task.utpDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+      var utpUploadSpeed =
+          ((task.utpUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
+      var utpPeerCount = task.utpPeerCount;
 
       var active = task.connectedPeersNumber;
       var seeders = task.seederNumber;
       var all = task.allPeersNumber;
       print(
-          'Progress : $progress , Peers:($active/$seeders/$all)($utpc) . Download speed : ($utpd)($ads/$ds)kb/s , upload speed : ($utpu)($aps/$ps)kb/s');
+          'Progress : $progress , Peers:($active/$seeders/$all)($utpPeerCount) . Download speed : ($utpDownloadSpeed)($ads/$ds)kb/s , upload speed : ($utpUploadSpeed)($aps/$ps)kb/s');
     });
   } catch (e) {
     print(e);

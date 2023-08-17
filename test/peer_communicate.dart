@@ -94,7 +94,7 @@ void main() async {
       assert(index[0] == 2);
       print('receive client have');
     });
-    peer.onKeepalive((peer) {
+    peer.onKeepAlive((peer) {
       callMap['keep_live'] = true;
     });
     peer.onHaveAll((peer) {
@@ -158,7 +158,7 @@ void main() async {
     peer.sendBitfield(bitfield);
     print('send bitfield to server');
     peer.sendInterested(true);
-    print('send interseted true to server');
+    print('send interested true to server');
     peer.sendChoke(false);
     print('send choke false to server');
   });
@@ -168,7 +168,7 @@ void main() async {
       peer.requestCancel(1, 0, DEFAULT_REQUEST_LENGTH);
       peer.sendRequest(1, 0);
       peer.sendHave(2);
-      peer.sendKeeplive();
+      peer.sendKeepAlive();
       peer.sendPortChange(3321);
       peer.sendHaveAll();
       peer.sendHaveNone();
@@ -187,9 +187,9 @@ void main() async {
     view.setUint8(0, index);
     view.setUint8(1, begin);
     var id = peer.localPeerId;
-    var idcontent = utf8.encode(id);
-    for (var i = 0; i < idcontent.length; i++) {
-      view.setUint8(i + 2, idcontent[i]);
+    var idContent = utf8.encode(id);
+    for (var i = 0; i < idContent.length; i++) {
+      view.setUint8(i + 2, idContent[i]);
     }
     peer.sendPiece(index, begin, content);
     peer.sendChoke(true); // Testing "allow fast".

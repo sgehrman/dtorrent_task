@@ -5,7 +5,7 @@ import 'package:dtorrent_task/src/lsd/lsd.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
 
 void main(List<String> args) async {
-  print(await getTorrenTaskVersion());
+  print(await getTorrentTaskVersion());
   var torrentFile = 'example${Platform.pathSeparator}test4.torrent';
   var model = await Torrent.parse(torrentFile);
   var infoHash = model.infoHash;

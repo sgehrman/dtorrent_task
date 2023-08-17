@@ -32,7 +32,7 @@ class TorrentStream implements AnnounceOptionsProvider {
 
   ServerSocket? _serverSocket;
 
-  final Set<InternetAddress> _cominIp = {};
+  final Set<InternetAddress> _comingIp = {};
 
   bool _paused = false;
   late String _infoHashString;
@@ -114,7 +114,7 @@ class TorrentStream implements AnnounceOptionsProvider {
       socket.close();
       return;
     }
-    if (_cominIp.length >= MAX_IN_PEERS || !_cominIp.add(socket.address)) {
+    if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }
@@ -162,10 +162,8 @@ class TorrentStream implements AnnounceOptionsProvider {
     // _dht?.announce(
     //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
     // _dht?.onNewPeer(_processDHTPeer);
-    // ignore: unawaited_futures
     // _dht?.bootstrap();
     if (_fileManager != null && _fileManager!.isAllComplete) {
-      // ignore: unawaited_futures
       _tracker?.complete();
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,

@@ -17,13 +17,13 @@ class DownloadFile {
 
   File? _file;
 
-  RandomAccessFile? _writeAcces;
+  RandomAccessFile? _writeAccess;
 
   RandomAccessFile? _readAccess;
 
-  StreamController? _sc;
+  StreamController? _streamController;
 
-  StreamSubscription? _ss;
+  StreamSubscription? _streamSubscription;
 
   DownloadFile(this.filePath, this.start, this.length);
 
@@ -38,14 +38,14 @@ class DownloadFile {
   ///
   /// **NOTE** :
   ///
-  /// Invoke this method does not mean this class should write content immeditelly , it will wait for other
+  /// Invoke this method does not mean this class should write content immediately , it will wait for other
   /// `READ`/`WRITE` which first come in the operation stack completing.
   ///
   Future<bool> requestWrite(
       int position, List<int> block, int start, int end) async {
-    _writeAcces ??= await getRandomAccessFile(WRITE);
+    _writeAccess ??= await getRandomAccessFile(WRITE);
     var completer = Completer<bool>();
-    _sc?.add({
+    _streamController?.add({
       'type': WRITE,
       'position': position,
       'block': block,
@@ -59,7 +59,7 @@ class DownloadFile {
   Future<List<int>> requestRead(int position, int length) async {
     _readAccess ??= await getRandomAccessFile(READ);
     var completer = Completer<List<int>>();
-    _sc?.add({
+    _streamController?.add({
       'type': READ,
       'position': position,
       'length': length,
@@ -74,7 +74,7 @@ class DownloadFile {
   /// upon entering this method, and it resumes reading from the channel only after processing
   /// the current request.
   void _processRequest(event) async {
-    _ss?.pause();
+    _streamSubscription?.pause();
     if (event['type'] == WRITE) {
       await _write(event);
     }
@@ -84,7 +84,7 @@ class DownloadFile {
     if (event['type'] == FLUSH) {
       await _flush(event);
     }
-    _ss?.resume();
+    _streamSubscription?.resume();
   }
 
   Future _write(event) async {
@@ -95,9 +95,9 @@ class DownloadFile {
       int end = event['end'];
       List<int> block = event['block'];
 
-      _writeAcces = await getRandomAccessFile(WRITE);
-      _writeAcces = await _writeAcces?.setPosition(position);
-      _writeAcces = await _writeAcces?.writeFrom(block, start, end);
+      _writeAccess = await getRandomAccessFile(WRITE);
+      _writeAccess = await _writeAccess?.setPosition(position);
+      _writeAccess = await _writeAccess?.writeFrom(block, start, end);
       completer.complete(true);
     } catch (e) {
       log('Write file error:', error: e, name: runtimeType.toString());
@@ -107,17 +107,17 @@ class DownloadFile {
 
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
-    _writeAcces ??= await getRandomAccessFile(WRITE);
+    _writeAccess ??= await getRandomAccessFile(WRITE);
     var completer = Completer<bool>();
-    _sc?.add({'type': FLUSH, 'completer': completer});
+    _streamController?.add({'type': FLUSH, 'completer': completer});
     return completer.future;
   }
 
   Future _flush(event) async {
     Completer completer = event['completer'];
     try {
-      _writeAcces = await getRandomAccessFile(WRITE);
-      await _writeAcces?.flush();
+      _writeAccess = await getRandomAccessFile(WRITE);
+      await _writeAccess?.flush();
       completer.complete(true);
     } catch (e) {
       log('Flush error:', error: e, name: runtimeType.toString());
@@ -163,15 +163,15 @@ class DownloadFile {
     var file = await _getOrCreateFile();
     RandomAccessFile? access;
     if (type == WRITE) {
-      _writeAcces ??= await file?.open(mode: FileMode.writeOnlyAppend);
-      access = _writeAcces;
+      _writeAccess ??= await file?.open(mode: FileMode.writeOnlyAppend);
+      access = _writeAccess;
     } else if (type == READ) {
       _readAccess ??= await file?.open(mode: FileMode.read);
       access = _readAccess;
     }
-    if (_sc == null) {
-      _sc = StreamController();
-      _ss = _sc?.stream.listen(_processRequest);
+    if (_streamController == null) {
+      _streamController = StreamController();
+      _streamSubscription = _streamController?.stream.listen(_processRequest);
     }
     return access!;
   }
@@ -180,25 +180,25 @@ class DownloadFile {
     if (isClosed) return;
     _closed = true;
     try {
-      await _ss?.cancel();
-      await _sc?.close();
-      await _writeAcces?.flush();
-      await _writeAcces?.close();
+      await _streamSubscription?.cancel();
+      await _streamController?.close();
+      await _writeAccess?.flush();
+      await _writeAccess?.close();
       await _readAccess?.close();
     } catch (e) {
       log('Close file error:', error: e, name: runtimeType.toString());
     } finally {
-      _writeAcces = null;
+      _writeAccess = null;
       _readAccess = null;
-      _ss = null;
-      _sc = null;
+      _streamSubscription = null;
+      _streamController = null;
     }
     return;
   }
 
   Future flush() async {
     try {
-      await _writeAcces?.flush();
+      await _writeAccess?.flush();
     } catch (e) {
       log('Flush file error:', error: e, name: runtimeType.toString());
     }

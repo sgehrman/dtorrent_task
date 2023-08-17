@@ -46,8 +46,8 @@ class DownloadFileManager {
   }
 
   Future<DownloadFileManager> _init(String directory) async {
-    var lastc = directory.substring(directory.length - 1);
-    if (lastc != Platform.pathSeparator) {
+    var lastChar = directory.substring(directory.length - 1);
+    if (lastChar != Platform.pathSeparator) {
       directory = directory + Platform.pathSeparator;
     }
     _initFileMap(directory);

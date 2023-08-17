@@ -17,7 +17,7 @@ class PieceManager implements PieceProvider {
 
   final List<PieceCompleteHandle> _pieceCompleteHandles = [];
 
-  final Set<int> _donwloadingPieces = <int>{};
+  final Set<int> _downloadingPieces = <int>{};
 
   final PieceSelector _pieceSelector;
 
@@ -78,8 +78,8 @@ class PieceManager implements PieceProvider {
       }
     }
     var candidatePieces = remoteHavePieces;
-    for (var i = 0; i < _donwloadingPieces.length; i++) {
-      var p = _pieces[_donwloadingPieces.elementAt(i)];
+    for (var i = 0; i < _downloadingPieces.length; i++) {
+      var p = _pieces[_downloadingPieces.elementAt(i)];
       if (p == null) continue;
       if (p.containsAvailablePeer(remotePeerId) && p.haveAvailableSubPiece()) {
         availablePiece.add(p.index);
@@ -101,7 +101,7 @@ class PieceManager implements PieceProvider {
   }
 
   void processDownloadingPiece(int pieceIndex) {
-    _donwloadingPieces.add(pieceIndex);
+    _downloadingPieces.add(pieceIndex);
   }
 
   /// After completing a piece, some processing is required:
@@ -110,7 +110,7 @@ class PieceManager implements PieceProvider {
   /// - Notify the listeners.
   void _processCompletePiece(int index) {
     var piece = _pieces.remove(index);
-    _donwloadingPieces.remove(index);
+    _downloadingPieces.remove(index);
     if (piece != null) {
       piece.dispose();
       for (var handle in _pieceCompleteHandles) {
@@ -131,7 +131,7 @@ class PieceManager implements PieceProvider {
     });
     _pieces.clear();
     _pieceCompleteHandles.clear();
-    _donwloadingPieces.clear();
+    _downloadingPieces.clear();
   }
 
   @override

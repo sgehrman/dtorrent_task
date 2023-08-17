@@ -71,7 +71,7 @@ mixin CongestionControl {
 
   void timeOutErrorHappen();
 
-  void orderResendRequest(int index, int begin, int length, int rensed);
+  void orderResendRequest(int index, int begin, int length, int resend);
 
   void startRequestDataTimeout([int times = 0]) {
     _timeout?.cancel();

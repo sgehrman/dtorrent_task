@@ -9,7 +9,7 @@ mixin ExtendedProcessor {
   Map? _rawMap;
   final Map<int, String> _localExtended = <int, String>{};
 
-  Map<String, int> get localExtened {
+  Map<String, int> get localExtended {
     var map = <String, int>{};
     _localExtended.forEach((key, value) {
       map[value] = key;
@@ -30,7 +30,7 @@ mixin ExtendedProcessor {
     return _eventHandler.remove(handler);
   }
 
-  void registerExtened(String name) {
+  void registerExtend(String name) {
     _localExtended[_id] = name;
     _id++;
   }

@@ -144,7 +144,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
   ServerSocket? _serverSocket;
   // ServerUTPSocket? _utpServer;
 
-  final Set<InternetAddress> _cominIp = {};
+  final Set<InternetAddress> _comingIp = {};
 
   bool _paused = false;
 
@@ -257,7 +257,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
       socket.close();
       return;
     }
-    if (_cominIp.length >= MAX_IN_PEERS || !_cominIp.add(socket.address)) {
+    if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }
@@ -275,7 +275,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
       socket.close();
       return;
     }
-    if (_cominIp.length >= MAX_IN_PEERS || !_cominIp.add(socket.address)) {
+    if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.address)) {
       socket.close();
       return;
     }
@@ -339,10 +339,8 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
     // _dht?.announce(
     //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
     // _dht?.onNewPeer(_processDHTPeer);
-    // ignore: unawaited_futures
     // _dht?.bootstrap();
     if (_fileManager != null && _fileManager!.isAllComplete) {
-      // ignore: unawaited_futures
       _tracker?.complete();
     } else {
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
@@ -389,7 +387,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
     _lsd?.close();
     _lsd = null;
     _peerIds.clear();
-    _cominIp.clear();
+    _comingIp.clear();
     return;
   }
 

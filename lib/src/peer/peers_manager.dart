@@ -48,9 +48,9 @@ class PeersManager with Holepunch, PEX {
 
   final _flushIndicesBuffer = <int>{};
 
-  final Set<void Function()> _allcompletehandles = {};
+  final Set<void Function()> _allCompleteHandles = {};
 
-  final Set<void Function()> _noActivePeerhandles = {};
+  final Set<void Function()> _noActivePeerHandles = {};
 
   final Torrent _metaInfo;
 
@@ -86,7 +86,7 @@ class PeersManager with Holepunch, PEX {
       this._fileManager, this._metaInfo,
       [this.maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE]) {
     // hook FileManager and PieceManager
-    _fileManager.onSubPieceWriteComplete(_processSubPieceWriteComplte);
+    _fileManager.onSubPieceWriteComplete(_processSubPieceWriteComplete);
     _fileManager.onSubPieceReadComplete(readSubPieceComplete);
     _pieceManager.onPieceComplete(_processPieceWriteComplete);
     _init();
@@ -140,7 +140,7 @@ class PeersManager with Holepunch, PEX {
 
   /// Average download speed , b/ms
   ///
-  /// This speed caculation : `total download content bytes` / [liveTime]
+  /// This speed calculation : `total download content bytes` / [liveTime]
   double get averageDownloadSpeed {
     var live = liveTime;
     if (live == 0) return 0.0;
@@ -149,7 +149,7 @@ class PeersManager with Holepunch, PEX {
 
   /// Average upload speed , b/ms
   ///
-  /// This speed caculation : `total upload content bytes` / [liveTime]
+  /// This speed calculation : `total upload content bytes` / [liveTime]
   double get averageUploadSpeed {
     var live = liveTime;
     if (live == 0) return 0.0;
@@ -158,7 +158,7 @@ class PeersManager with Holepunch, PEX {
 
   /// Current download speed , b/ms
   ///
-  /// This speed caculation: sum(`active peer download speed`)
+  /// This speed calculation: sum(`active peer download speed`)
   double get currentDownloadSpeed {
     if (_activePeers.isEmpty) return 0.0;
     return _activePeers.fold(
@@ -167,7 +167,7 @@ class PeersManager with Holepunch, PEX {
 
   /// Current upload speed , b/ms
   ///
-  /// This speed caculation: sum(`active peer upload speed`)
+  /// This speed calculation: sum(`active peer upload speed`)
   double get uploadSpeed {
     if (_activePeers.isEmpty) return 0.0;
     return _activePeers.fold(
@@ -176,7 +176,7 @@ class PeersManager with Holepunch, PEX {
 
   void _hookPeer(Peer peer) {
     if (peer.address.address == localExternalIP) return;
-    if (_peerExsist(peer)) return;
+    if (_peerExist(peer)) return;
     peer.onDispose(_processPeerDispose);
     peer.onBitfield(_processBitfieldUpdate);
     peer.onHaveAll(_processHaveAll);
@@ -201,8 +201,8 @@ class PeersManager with Holepunch, PEX {
   void _registerExtended(Peer peer) {
     log('registering extensions for peer ${peer.address}',
         name: runtimeType.toString());
-    peer.registerExtened('ut_pex');
-    peer.registerExtened('ut_holepunch');
+    peer.registerExtend('ut_pex');
+    peer.registerExtend('ut_holepunch');
   }
 
   void unHookPeer(Peer peer) {
@@ -223,14 +223,14 @@ class PeersManager with Holepunch, PEX {
     peer.offExtendedEvent(_processExtendedMessage);
   }
 
-  bool _peerExsist(Peer id) {
+  bool _peerExist(Peer id) {
     return _activePeers.contains(id);
   }
 
   void _processExtendedMessage(dynamic source, String name, dynamic data) {
     log('Processing Extended Message $name', name: runtimeType.toString());
     if (name == 'ut_holepunch') {
-      parseHolepuchMessage(data);
+      parseHolepunchMessage(data);
     }
     if (name == 'ut_pex') {
       parsePEXDatas(source, data);
@@ -239,13 +239,13 @@ class PeersManager with Holepunch, PEX {
       if (localExternalIP != null &&
           data['yourip'] != null &&
           (data['yourip'].length == 4 || data['yourip'].length == 16)) {
-        InternetAddress myip;
+        InternetAddress myIp;
         try {
-          myip = InternetAddress.fromRawAddress(data['yourip']);
+          myIp = InternetAddress.fromRawAddress(data['yourip']);
         } catch (e) {
           return;
         }
-        if (IGNORE_IPS.contains(myip)) return;
+        if (IGNORE_IPS.contains(myIp)) return;
         localExternalIP = InternetAddress.fromRawAddress(data['yourip']);
       }
     }
@@ -281,7 +281,7 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _processSubPieceWriteComplte(int pieceIndex, int begin, int length) {
+  void _processSubPieceWriteComplete(int pieceIndex, int begin, int length) {
     _pieceManager.processSubPieceWriteComplete(pieceIndex, begin, length);
   }
 
@@ -315,17 +315,17 @@ class PeersManager with Holepunch, PEX {
   }
 
   void _fireAllComplete() {
-    for (var element in _allcompletehandles) {
+    for (var element in _allCompleteHandles) {
       Timer.run(() => element());
     }
   }
 
   bool onAllComplete(void Function() h) {
-    return _allcompletehandles.add(h);
+    return _allCompleteHandles.add(h);
   }
 
   bool offAllComplete(void Function() h) {
-    return _allcompletehandles.remove(h);
+    return _allCompleteHandles.remove(h);
   }
 
   /// When read the resource content complete , invoke this method to notify
@@ -378,13 +378,13 @@ class PeersManager with Holepunch, PEX {
     piece?.pushSubPieceLast(begin ~/ DEFAULT_REQUEST_LENGTH);
   }
 
-  void _pushSubpicesBack(List<List<int>> requests) {
+  void _pushSubPiecesBack(List<List<int>> requests) {
     if (requests.isEmpty) return;
     for (var element in requests) {
-      var pindex = element[0];
+      var pieceIndex = element[0];
       var begin = element[1];
       // TODO This is dangerous here. Currently, we are dividing a piece into 16 KB chunks. What if it's not the case?
-      var piece = _pieceManager[pindex];
+      var piece = _pieceManager[pieceIndex];
       var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
       piece?.pushSubPiece(subindex);
     }
@@ -402,7 +402,7 @@ class PeersManager with Holepunch, PEX {
     _activePeers.remove(peer);
 
     var bufferRequests = peer.requestBuffer;
-    _pushSubpicesBack(bufferRequests);
+    _pushSubPiecesBack(bufferRequests);
 
     var completedPieces = peer.remoteCompletePieces;
     for (var index in completedPieces) {
@@ -621,7 +621,7 @@ class PeersManager with Holepunch, PEX {
   }
 
   void _keepAlive(Peer peer) {
-    peer.sendKeeplive();
+    peer.sendKeepAlive();
   }
 
   /// Pause the task
@@ -680,14 +680,14 @@ class PeersManager with Holepunch, PEX {
     clearPEX();
     _endTime = DateTime.now().millisecondsSinceEpoch;
 
-    _fileManager.offSubPieceWriteComplete(_processSubPieceWriteComplte);
+    _fileManager.offSubPieceWriteComplete(_processSubPieceWriteComplete);
     _fileManager.offSubPieceReadComplete(readSubPieceComplete);
     _pieceManager.offPieceComplete(_processPieceWriteComplete);
 
     await _flushFiles(_flushIndicesBuffer);
     _flushIndicesBuffer.clear();
-    _allcompletehandles.clear();
-    _noActivePeerhandles.clear();
+    _allCompleteHandles.clear();
+    _noActivePeerHandles.clear();
     _remoteRequest.clear();
     _pausedRequest.clear();
     _pausedRemoteRequest.clear();
@@ -705,7 +705,7 @@ class PeersManager with Holepunch, PEX {
     await disposePeers(_activePeers);
   }
 
-  //TODO test:
+  //TODO: test
 
   @override
   void addPEXPeer(dynamic source, CompactAddress address, Map options) {

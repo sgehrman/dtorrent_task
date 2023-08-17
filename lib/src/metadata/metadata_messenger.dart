@@ -1,6 +1,6 @@
 import 'package:b_encode_decode/b_encode_decode.dart';
 
-mixin MetaDataMessager {
+mixin MetaDataMessenger {
   List<int> createRequestMessage(int piece) {
     // {'msg_type': 0, 'piece': 0}
     var message = {};
