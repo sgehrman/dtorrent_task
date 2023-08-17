@@ -322,7 +322,7 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
     var map = {};
     map['name'] = _metaInfo.name;
     map['tcp_socket'] = _serverSocket?.port;
-    map['comoplete_pieces'] = List.from(_stateFile!.bitfield.completedPieces);
+    map['complete_pieces'] = List.from(_stateFile!.bitfield.completedPieces);
     map['total_pieces_num'] = _stateFile!.bitfield.piecesNum;
     map['downloaded'] = _stateFile!.downloaded;
     map['uploaded'] = _stateFile!.uploaded;
