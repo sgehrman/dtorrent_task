@@ -15,7 +15,7 @@ class Piece {
 
   final Set<int> _downloadedSubPieces = <int>{};
 
-  final Set<int> _writtingSubPieces = <int>{};
+  final Set<int> _writingSubPieces = <int>{};
 
   int _subPiecesCount = 0;
 
@@ -41,7 +41,7 @@ class Piece {
     return subPiecesCount !=
         _downloadedSubPieces.length +
             _subPiecesQueue.length +
-            _writtingSubPieces.length;
+            _writingSubPieces.length;
   }
 
   Queue<int> get subPieceQueue => _subPiecesQueue;
@@ -55,7 +55,7 @@ class Piece {
 
   int get downloadedSubPiecesCount => _downloadedSubPieces.length;
 
-  int get writtingSubPiecesCount => _writtingSubPieces.length;
+  int get writingSubPiecesCount => _writingSubPieces.length;
 
   bool haveAvailableSubPiece() {
     if (_subPiecesCount == 0) return false;
@@ -77,19 +77,19 @@ class Piece {
   ///
   /// SubPiece download completed.
   ///
-  /// Put the subpiece into the _writtingSubPieces queue and mark it as completed.
+  /// Put the subpiece into the _writingSubPieces queue and mark it as completed.
   /// If the subpiece has already been marked, return false; if it hasn't been marked
   /// yet, mark it as completed and return true.
   bool subPieceDownloadComplete(int begin) {
     var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
     _subPiecesQueue.remove(subindex);
-    return _writtingSubPieces.add(subindex);
+    return _writingSubPieces.add(subindex);
   }
 
   bool subPieceWriteComplete(int begin) {
     var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
     // _subPiecesQueue.remove(subindex); // Is this possible?
-    _writtingSubPieces.remove(subindex);
+    _writingSubPieces.remove(subindex);
     var re = _downloadedSubPieces.add(subindex);
     if (isCompleted) {
       clearAvailablePeer();
@@ -133,7 +133,7 @@ class Piece {
 
   bool pushSubPiece(int subIndex) {
     if (subPieceQueue.contains(subIndex) ||
-        _writtingSubPieces.contains(subIndex) ||
+        _writingSubPieces.contains(subIndex) ||
         _downloadedSubPieces.contains(subIndex)) return false;
     subPieceQueue.addFirst(subIndex);
     return true;
@@ -146,7 +146,7 @@ class Piece {
 
   bool pushSubPieceLast(int index) {
     if (subPieceQueue.contains(index) ||
-        _writtingSubPieces.contains(index) ||
+        _writingSubPieces.contains(index) ||
         _downloadedSubPieces.contains(index)) return false;
     subPieceQueue.addLast(index);
     return true;
@@ -161,7 +161,7 @@ class Piece {
     _disposed = true;
     _availablePeers.clear();
     _downloadedSubPieces.clear();
-    _writtingSubPieces.clear();
+    _writingSubPieces.clear();
   }
 
   @override

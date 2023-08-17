@@ -13,10 +13,10 @@ import '../peer/peer.dart';
 import '../peer/holepunch.dart';
 import '../peer/pex.dart';
 import '../utils.dart';
-import 'metadata_messager.dart';
+import 'metadata_messenger.dart';
 
 class MetadataDownloader
-    with Holepunch, PEX, MetaDataMessager
+    with Holepunch, PEX, MetaDataMessenger
     implements AnnounceOptionsProvider {
   final Set<Function(List<int> data)> _handlers = {};
 
@@ -83,7 +83,6 @@ class MetadataDownloader
     _running = true;
     _dht.announce(String.fromCharCodes(_infoHashBuffer), 0);
     _dht.onNewPeer(_processDHTPeer);
-    // ignore: unawaited_futures
     _dht.bootstrap();
   }
 
@@ -154,7 +153,7 @@ class MetadataDownloader
 
   void _hookPeer(Peer peer) {
     if (peer.address.address == localExternalIP) return;
-    if (_peerExsist(peer)) return;
+    if (_peerExist(peer)) return;
     peer.onDispose(_processPeerDispose);
     peer.onHandShake(_processPeerHandshake);
     peer.onConnect(_peerConnected);
@@ -163,15 +162,15 @@ class MetadataDownloader
     peer.connect();
   }
 
-  bool _peerExsist(Peer id) {
+  bool _peerExist(Peer id) {
     return _activePeers.contains(id);
   }
 
   /// Add supported extensions here
   void _registerExtended(Peer peer) {
-    peer.registerExtened('ut_metadata');
-    peer.registerExtened('ut_pex');
-    peer.registerExtened('ut_holepunch');
+    peer.registerExtend('ut_metadata');
+    peer.registerExtend('ut_pex');
+    peer.registerExtend('ut_holepunch');
   }
 
   void unHookPeer(Peer peer) {
@@ -207,7 +206,7 @@ class MetadataDownloader
       parseMetaDataMessage(peer, data);
     }
     if (name == 'ut_holepunch') {
-      parseHolepuchMessage(data);
+      parseHolepunchMessage(data);
     }
     if (name == 'ut_pex') {
       parsePEXDatas(source, data);
@@ -228,13 +227,13 @@ class MetadataDownloader
       if (localExternalIP != null &&
           data['yourip'] != null &&
           (data['yourip'].length == 4 || data['yourip'].length == 16)) {
-        InternetAddress myip;
+        InternetAddress myIp;
         try {
-          myip = InternetAddress.fromRawAddress(data['yourip']);
+          myIp = InternetAddress.fromRawAddress(data['yourip']);
         } catch (e) {
           return;
         }
-        if (IGNORE_IPS.contains(myip)) return;
+        if (IGNORE_IPS.contains(myIp)) return;
         localExternalIP = InternetAddress.fromRawAddress(data['yourip']);
       }
 
@@ -278,7 +277,7 @@ class MetadataDownloader
         }
       }
     } catch (e) {
-      // donothing
+      // do nothing
     }
   }
 

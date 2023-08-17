@@ -15,7 +15,7 @@ class LSD {
       InternetAddress.fromRawAddress(Uint8List.fromList([239, 192, 152, 143]));
   static final LSD_PORT = 6771;
 
-  static final String ANNOUNCE_FIREST_LINE = 'BT-SEARCH * HTTP/1.1\r\n';
+  static final String ANNOUNCE_FIRST_LINE = 'BT-SEARCH * HTTP/1.1\r\n';
 
   bool _closed = false;
 
@@ -43,8 +43,8 @@ class LSD {
       if (event == RawSocketEvent.read) {
         var datagram = _socket?.receive();
         if (datagram != null) {
-          var datas = datagram.data;
-          var str = String.fromCharCodes(datas);
+          var data = datagram.data;
+          var str = String.fromCharCodes(data);
           _processReceive(str, datagram.address);
         }
       }
@@ -68,12 +68,12 @@ class LSD {
   }
 
   void _processReceive(String str, InternetAddress source) {
-    var strs = str.split('\r\n');
-    if (strs[0] != ANNOUNCE_FIREST_LINE) return;
+    var strings = str.split('\r\n');
+    if (strings[0] != ANNOUNCE_FIRST_LINE) return;
     int? port;
     String? infoHash;
-    for (var i = 1; i < strs.length; i++) {
-      var element = strs[i];
+    for (var i = 1; i < strings.length; i++) {
+      var element = strings[i];
       if (element.startsWith('Port:')) {
         var index = element.indexOf('Port:');
         index += 5;
@@ -125,7 +125,7 @@ class LSD {
   ///
   ///\r\n
   String _createMessage() {
-    return '${ANNOUNCE_FIREST_LINE}Host: ${LSD_HOST_STRING}Port: $port\r\nInfohash: ${_infoHashHex}\r\ncookie: dt-client${_peerId}\r\n\r\n\r\n';
+    return '${ANNOUNCE_FIRST_LINE}Host: ${LSD_HOST_STRING}Port: $port\r\nInfohash: ${_infoHashHex}\r\ncookie: dt-client${_peerId}\r\n\r\n\r\n';
   }
 
   void close() {

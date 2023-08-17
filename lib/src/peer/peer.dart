@@ -12,7 +12,7 @@ import 'package:utp_protocol/utp_protocol.dart';
 import 'peer_event_dispatcher.dart';
 import 'congestion_control.dart';
 import 'speed_calculator.dart';
-import 'extended_proccessor.dart';
+import 'extended_processor.dart';
 
 const KEEP_ALIVE_MESSAGE = [0, 0, 0, 0];
 const RESERVED = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -242,7 +242,7 @@ abstract class Peer
   String get localPeerId => _localPeerId;
 
   /// Requests received from the remote peer.
-  List<List<int>> get remoteRequestbuffer => _remoteRequestBuffer;
+  List<List<int>> get remoteRequestBuffer => _remoteRequestBuffer;
 
   /// Requests sent from the local peer to the remote peer.
   List<List<int>> get requestBuffer => _requestBuffer;
@@ -377,8 +377,8 @@ abstract class Peer
           }
           return;
         } else {
-          // If infohash buffer is incorret , dispose this peer
-          dispose('Infohash is incorret');
+          // If infohash buffer is incorrect , dispose this peer
+          dispose('Infohash is incorrect');
           return;
         }
       }
@@ -461,9 +461,9 @@ abstract class Peer
           interestedMe = true;
           return; // interested message
         case ID_NOT_INTERESTED:
-          _log('remote not interseted me : $address');
+          _log('remote not interested me : $address');
           interestedMe = false;
-          return; // not interseted message
+          return; // not interested message
         // case ID_HAVE:
         //   _log('process have from : $address');
         //   var index = ByteData.view(message.buffer).getUint32(0);
@@ -478,9 +478,9 @@ abstract class Peer
           if (message != null) _processRemoteRequest(message);
           return; // request message
         // case ID_PIECE:
-        //   _log('process pices : $address');
+        //   _log('process pieces : $address');
         //   _processReceivePiece(message);
-        //   return; // pices message
+        //   return; // pieces message
         case ID_CANCEL:
           _log('process cancel : $address');
           if (message != null) _processCancel(message);
@@ -514,9 +514,9 @@ abstract class Peer
           return;
         case ID_EXTENDED:
           if (message != null) {
-            var extid = message[0];
+            var extensionId = message[0];
             message = message.sublist(1);
-            processExtendMessage(extid, message);
+            processExtendMessage(extensionId, message);
           }
           return;
       }
@@ -641,7 +641,7 @@ abstract class Peer
       fireRejectRequest(index, begin, length);
     } else {
       // It's possible that the peer was deleted, but the reject message arrived too late.
-      // dispose('Never send request ($index,$begin) but recieve a rejection');
+      // dispose('Never send request ($index,$begin) but receive a rejection');
       return;
     }
   }
@@ -755,18 +755,18 @@ abstract class Peer
 
   void _processHandShake(List<int> data) {
     _remotePeerId = _parseRemotePeerId(data);
-    var reseverd = data.getRange(20, 28);
-    var fast = reseverd.elementAt(7) & 0x04;
+    var reserved = data.getRange(20, 28);
+    var fast = reserved.elementAt(7) & 0x04;
     remoteEnableFastPeer = (fast == 0x04);
-    var extented = reseverd.elementAt(5);
-    remoteEnableExtended = ((extented & 0x10) == 0x10);
+    var extended = reserved.elementAt(5);
+    remoteEnableExtended = ((extended & 0x10) == 0x10);
     _sendExtendedHandshake();
     fireHandshakeEvent(_remotePeerId, data);
   }
 
   void _sendExtendedHandshake() async {
     if (localEnableExtended && remoteEnableExtended) {
-      var m = await _createExtenedHandshakeMessage();
+      var m = await _createExtendedHandshakeMessage();
       sendMessage(ID_EXTENDED, m);
     }
   }
@@ -780,7 +780,7 @@ abstract class Peer
 
   /// Connect remote peer and return a [Stream] future
   ///
-  /// [timeout] defaul value is 30 seconds
+  /// [timeout] default value is 30 seconds
   /// Different type peer use different protocol , such as TCP,uTP,
   /// so this method should be implemented by sub-class
   Future<Stream?> connectRemote(int timeout);
@@ -829,14 +829,14 @@ abstract class Peer
     if (_handShaked) return;
     var message = <int>[];
     message.addAll(HAND_SHAKE_HEAD);
-    var reseverd = List<int>.from(RESERVED);
+    var reserved = List<int>.from(RESERVED);
     if (localEnableFastPeer) {
-      reseverd[7] |= 0x04;
+      reserved[7] |= 0x04;
     }
     if (localEnableExtended) {
-      reseverd[5] |= 0x10;
+      reserved[5] |= 0x10;
     }
-    message.addAll(reseverd);
+    message.addAll(reserved);
     message.addAll(_infoHashBuffer);
     message.addAll(utf8.encode(_localPeerId));
     sendByteMessage(message);
@@ -844,15 +844,15 @@ abstract class Peer
     _handShaked = true;
   }
 
-  Future<List<int>> _createExtenedHandshakeMessage() async {
+  Future<List<int>> _createExtendedHandshakeMessage() async {
     var message = <int>[];
     message.add(0);
     var d = <String, dynamic>{};
     d['yourip'] = address.address.rawAddress;
-    var version = await getTorrenTaskVersion();
+    var version = await getTorrentTaskVersion();
     version ??= '0.0.0';
     d['v'] = 'Dart BT v$version';
-    d['m'] = localExtened;
+    d['m'] = localExtended;
     d['reqq'] = reqq;
     var m = encode(d);
     message.addAll(m);
@@ -866,7 +866,7 @@ abstract class Peer
   /// (keep-alive or any other message) for a certain period of time, so a keep-alive message must be
   /// sent to maintain the connection alive if no command have been sent for a given amount of time.
   /// This amount of time is generally two minutes.
-  void sendKeeplive() {
+  void sendKeepAlive() {
     sendMessage(null);
   }
 
@@ -920,7 +920,7 @@ abstract class Peer
   /// - [index]: integer specifying the zero-based piece index
   /// - [begin]: integer specifying the zero-based byte offset within the piece
   /// - [length]: integer specifying the requested length.
-  /// - [timeout]: when send request to remote , after [timeout] dont get response,
+  /// - [timeout]: when send request to remote , after [timeout] of not getting response,
   /// it will fire [requestTimeout] event
   bool sendRequest(int index, int begin,
       [int length = DEFAULT_REQUEST_LENGTH]) {
@@ -1015,13 +1015,13 @@ abstract class Peer
   /// - `unchoke: <len=0001><id=1>`
   ///
   /// The `choke`/`unchoke` message is fixed-length and has no payload.
-  void sendChoke(bool ichokeu) {
-    if (chokeRemote == ichokeu) {
+  void sendChoke(bool choke) {
+    if (chokeRemote == choke) {
       return;
     }
-    chokeRemote = ichokeu;
+    chokeRemote = choke;
     var id = ID_CHOKE;
-    if (!ichokeu) id = ID_UNCHOKE;
+    if (!choke) id = ID_UNCHOKE;
     sendMessage(id);
   }
 
@@ -1088,7 +1088,7 @@ abstract class Peer
   ///
   /// `Suggest Piece` is an advisory message meaning "you might like to download this piece."
   /// The intended usage is for 'super-seeding' without throughput reduction, to avoid redundant
-  /// downloads, and so that a seed which is disk I/O bound can upload continguous or identical
+  /// downloads, and so that a seed which is disk I/O bound can upload contiguous or identical
   /// pieces to avoid excessive disk seeks.
   ///
   /// In all cases, the seed SHOULD operate to maintain a roughly equal number of copies of each
@@ -1193,9 +1193,9 @@ abstract class Peer
   int get hashCode => address.address.address.hashCode;
 
   @override
-  bool operator ==(b) {
-    if (b is Peer) {
-      return b.address.address.address == address.address.address;
+  bool operator ==(other) {
+    if (other is Peer) {
+      return other.address.address.address == address.address.address;
     }
     return false;
   }

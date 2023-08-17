@@ -29,9 +29,9 @@ class StateFile {
 
   File? _bitfieldFile;
 
-  StreamSubscription? _ss;
+  StreamSubscription? _streamSubscription;
 
-  StreamController? _sc;
+  StreamController? _streamController;
 
   bool get isClosed => _closed;
 
@@ -55,8 +55,8 @@ class StateFile {
   int get uploaded => _uploaded;
 
   Future<File> init(String directoryPath, Torrent metainfo) async {
-    var lastc = directoryPath.substring(directoryPath.length - 1);
-    if (lastc != Platform.pathSeparator) {
+    var lastChar = directoryPath.substring(directoryPath.length - 1);
+    if (lastChar != Platform.pathSeparator) {
       directoryPath = directoryPath + Platform.pathSeparator;
     }
 
@@ -85,7 +85,7 @@ class StateFile {
   Future<bool> update(int index, {bool have = true, int uploaded = 0}) async {
     _access = await getAccess();
     var completer = Completer<bool>();
-    _sc?.add({
+    _streamController?.add({
       'type': 'single',
       'index': index,
       'uploaded': uploaded,
@@ -99,7 +99,7 @@ class StateFile {
       {List<bool>? have, int uploaded = 0}) async {
     _access = await getAccess();
     var completer = Completer<bool>();
-    _sc?.add({
+    _streamController?.add({
       'type': 'all',
       'indices': indices,
       'uploaded': uploaded,
@@ -161,21 +161,22 @@ class StateFile {
   }
 
   void _processRequest(event) async {
-    _ss?.pause();
+    _streamSubscription?.pause();
     // if (event['type'] == 'all') {
     //   await _updateAll(event);
     // }
     if (event['type'] == 'single') {
       await _update(event);
     }
-    _ss?.resume();
+    _streamSubscription?.resume();
   }
 
   Future<RandomAccessFile?> getAccess() async {
     if (_access == null) {
       _access = await _bitfieldFile?.open(mode: FileMode.writeOnlyAppend);
-      _sc = StreamController();
-      _ss = _sc?.stream.listen(_processRequest, onError: (e) => print(e));
+      _streamController = StreamController();
+      _streamSubscription = _streamController?.stream
+          .listen(_processRequest, onError: (e) => print(e));
     }
     return _access;
   }
@@ -184,8 +185,8 @@ class StateFile {
     if (isClosed) return;
     _closed = true;
     try {
-      await _ss?.cancel();
-      await _sc?.close();
+      await _streamSubscription?.cancel();
+      await _streamController?.close();
       await _access?.flush();
       await _access?.close();
     } catch (e) {
@@ -193,8 +194,8 @@ class StateFile {
           error: e, name: runtimeType.toString());
     } finally {
       _access = null;
-      _ss = null;
-      _sc = null;
+      _streamSubscription = null;
+      _streamController = null;
     }
   }
 

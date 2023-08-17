@@ -111,13 +111,13 @@ class Bitfield {
       [int offset = 0, int? end]) {
     var b = piecesNum ~/ 8;
     if (b * 8 != piecesNum) b++;
-    var mybuffer = Uint8List(b);
-    end ??= mybuffer.length;
+    var newBuffer = Uint8List(b);
+    end ??= newBuffer.length;
     var index = 0;
     for (var i = offset; i < end; i++, index++) {
-      mybuffer[index] = list[i];
+      newBuffer[index] = list[i];
     }
-    return Bitfield(piecesNum, mybuffer);
+    return Bitfield(piecesNum, newBuffer);
   }
 
   static Bitfield createEmptyBitfield(int piecesNum) {

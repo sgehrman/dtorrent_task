@@ -43,14 +43,14 @@ mixin Holepunch {
   /// port (2 bytes): <big-endian port number>
   ///
   /// err_code (4 bytes): <error code as a big-endian 4-byte integer; 0 in non-error messages>
-  void parseHolepuchMessage(List<int> data) {
+  void parseHolepunchMessage(List<int> data) {
     log('Parsing holepunch message', name: runtimeType.toString());
     var type = data[0];
-    var iptype = data[1];
+    var ipType = data[1];
     var offset = 0;
     CompactAddress? ip;
     try {
-      if (iptype == 0) {
+      if (ipType == 0) {
         ip = CompactAddress.parseIPv4Address(data, 2);
         offset = 8;
       } else {

@@ -11,16 +11,16 @@ export 'src/peer/peer_base.dart';
 const ID_PREFIX = '-DT0201-';
 
 /// Current version number
-Future<String?> getTorrenTaskVersion() async {
+Future<String?> getTorrentTaskVersion() async {
   var file = File('pubspec.yaml');
   if (await file.exists()) {
     var lines = await file.readAsLines();
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
-      var strs = line.split(':');
-      if (strs.length == 2) {
-        var key = strs[0];
-        var value = strs[1];
+      var strings = line.split(':');
+      if (strings.length == 2) {
+        var key = strings[0];
+        var value = strings[1];
         if (key == 'version') return value;
       }
     }

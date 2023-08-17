@@ -270,12 +270,12 @@ mixin PeerEventDispatcher {
   }
 
   /// Add `remote keep alive`  event handler
-  bool onKeepalive(NoneParamHandle handle) {
+  bool onKeepAlive(NoneParamHandle handle) {
     return _onNoneParamCallback(handle, PEER_EVENT_KEEPALIVE);
   }
 
   /// Remove `remote keep alive`  event handler
-  bool offKeepalive(NoneParamHandle handle) {
+  bool offKeepAlive(NoneParamHandle handle) {
     return _offNoneParamCallback(handle, PEER_EVENT_KEEPALIVE);
   }
 

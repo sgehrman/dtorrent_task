@@ -71,8 +71,9 @@ mixin SpeedCalculator {
     if (requests.isEmpty) return;
     var downloaded = 0;
     for (var request in requests) {
-      if (request[4] != 0)
+      if (request[4] != 0) {
         continue; // Do not count the time for re-calculation.
+      }
       downloaded += request[2];
     }
     _downloadedHistory.add([downloaded, DateTime.now().microsecondsSinceEpoch]);
