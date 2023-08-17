@@ -180,7 +180,7 @@ class MetadataDownloader
     peer.offExtendedEvent(_processExtendedMessage);
   }
 
-  void _peerConnected(dynamic source) {
+  void _peerConnected(Peer source) {
     if (!_running) return;
     var peer = source as Peer;
     _activePeers.add(peer);

@@ -76,7 +76,7 @@ class PeersManager with Holepunch, PEX {
 
   Timer? _keepAliveTimer;
 
-  final List _pausedRequest = [];
+  final List<List<dynamic>> _pausedRequest = [];
 
   final Map<String, List> _pausedRemoteRequest = {};
 
@@ -361,19 +361,18 @@ class PeersManager with Holepunch, PEX {
   }
 
   /// Even if the other peer has choked me, I can still download.
-  void _processAllowFast(dynamic source, int index) {
-    var peer = source as Peer;
+  void _processAllowFast(Peer peer, int index) {
     var piece = _pieceProvider[index];
     if (piece != null && piece.haveAvailableSubPiece()) {
       piece.addAvailablePeer(peer.id);
       _pieceManager.processDownloadingPiece(index);
-      _requestPieces(source, index);
+      _requestPieces(peer, index);
     }
   }
 
-  void _processSuggestPiece(dynamic source, int index) {}
+  void _processSuggestPiece(Peer peer, int index) {}
 
-  void _processRejectRequest(dynamic source, int index, int begin, int length) {
+  void _processRejectRequest(Peer peer, int index, int begin, int length) {
     var piece = _pieceProvider[index];
     piece?.pushSubPieceLast(begin ~/ DEFAULT_REQUEST_LENGTH);
   }
@@ -390,8 +389,7 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _processPeerDispose(dynamic source, [dynamic reason]) {
-    var peer = source as Peer;
+  void _processPeerDispose(Peer peer, [dynamic reason]) {
     var reconnect = true;
     if (reason is BadException) {
       reconnect = false;
@@ -441,21 +439,18 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _peerConnected(dynamic source) {
+  void _peerConnected(Peer peer) {
     _startedTime ??= DateTime.now().millisecondsSinceEpoch;
     _endTime = null;
-    var peer = source as Peer;
     _activePeers.add(peer);
     peer.sendHandShake();
   }
 
-  void _requestPieces(dynamic source, [int pieceIndex = -1]) async {
+  void _requestPieces(Peer peer, [int pieceIndex = -1]) async {
     if (isPaused) {
-      _pausedRequest.add([source, pieceIndex]);
+      _pausedRequest.add([peer, pieceIndex]);
       return;
     }
-    var peer = source as Peer;
-
     Piece? piece;
     if (pieceIndex != -1) {
       piece = _pieceProvider[pieceIndex];
@@ -482,9 +477,7 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _processReceivePiece(
-      dynamic source, int index, int begin, List<int> block) {
-    var peer = source as Peer;
+  void _processReceivePiece(Peer peer, int index, int begin, List<int> block) {
     _downloaded += block.length;
 
     var piece = _pieceManager[index];
@@ -497,35 +490,30 @@ class PeersManager with Holepunch, PEX {
     Timer.run(() => _requestPieces(peer, index));
   }
 
-  void _processPeerHandshake(dynamic source, String remotePeerId, data) {
-    var peer = source as Peer;
+  void _processPeerHandshake(Peer peer, String remotePeerId, data) {
     peer.sendBitfield(_fileManager.localBitfield);
   }
 
-  void _processRemoteRequest(dynamic source, int index, int begin, int length) {
+  void _processRemoteRequest(Peer peer, int index, int begin, int length) {
     if (isPaused) {
-      var peer = source as Peer;
       _pausedRemoteRequest[peer.id] ??= [];
       var pausedRequest = _pausedRemoteRequest[peer.id];
-      pausedRequest?.add([source, index, begin, length]);
+      pausedRequest?.add([peer, index, begin, length]);
       return;
     }
-    var peer = source as Peer;
     _remoteRequest.add([index, begin, peer]);
     _fileManager.readFile(index, begin, length);
   }
 
-  void _processHaveAll(dynamic source) {
-    var peer = source as Peer;
-    _processBitfieldUpdate(source, peer.remoteBitfield);
+  void _processHaveAll(Peer peer) {
+    _processBitfieldUpdate(peer, peer.remoteBitfield);
   }
 
-  void _processHaveNone(dynamic source) {
-    _processBitfieldUpdate(source, null);
+  void _processHaveNone(Peer peer) {
+    _processBitfieldUpdate(peer, null);
   }
 
-  void _processBitfieldUpdate(dynamic source, Bitfield? bitfield) {
-    var peer = source as Peer;
+  void _processBitfieldUpdate(Peer peer, Bitfield? bitfield) {
     if (bitfield != null) {
       if (peer.interestedRemote) return;
       if (_fileManager.isAllComplete && peer.isSeeder) {
@@ -545,8 +533,7 @@ class PeersManager with Holepunch, PEX {
     peer.sendInterested(false);
   }
 
-  void _processHaveUpdate(dynamic source, List<int> indices) {
-    var peer = source as Peer;
+  void _processHaveUpdate(Peer peer, List<int> indices) {
     var flag = false;
     for (var index in indices) {
       if (_pieceProvider[index] == null) continue;
@@ -563,8 +550,7 @@ class PeersManager with Holepunch, PEX {
     if (flag && peer.isSleeping) Timer.run(() => _requestPieces(peer));
   }
 
-  void _processChokeChange(dynamic source, bool choke) {
-    var peer = source as Peer;
+  void _processChokeChange(Peer peer, bool choke) {
     // Update available peers for pieces.
     if (!choke) {
       var completedPieces = peer.remoteCompletePieces;
@@ -581,8 +567,7 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _processInterestedChange(dynamic source, bool interested) {
-    var peer = source as Peer;
+  void _processInterestedChange(Peer peer, bool interested) {
     if (interested) {
       peer.sendChoke(false);
     } else {
