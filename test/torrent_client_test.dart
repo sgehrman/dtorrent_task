@@ -257,7 +257,7 @@ void main() {
     test('Create/Read/Write/Delete', () async {
       var content = 'DART-TORRENT-CLIENT';
       var buffer = utf8.encode(content);
-      var file = DownloadFile('test/test.txt', 0, buffer.length);
+      var file = DownloadFile('test/test.txt', 0, buffer.length, 'test.txt');
       assert(await file.requestWrite(0, buffer, 0, buffer.length));
       var bytes = await file.requestRead(0, buffer.length);
       var result = String.fromCharCodes(bytes);
