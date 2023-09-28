@@ -503,4 +503,7 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
   void requestPeersFromDHT() {
     _dht?.requestPeers(String.fromCharCodes(_metaInfo.infoHashBuffer));
   }
+
+  @override
+  Torrent get metaInfo => _metaInfo;
 }
