@@ -95,7 +95,11 @@ class PeersManager with Holepunch, PEX {
   }
 
   Future<void> _init() async {
-    localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
+    try {
+      localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
+    } catch (e) {
+      // Do nothing
+    }
   }
 
   /// Task is paused
