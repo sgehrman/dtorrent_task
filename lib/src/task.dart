@@ -26,6 +26,7 @@ abstract class TorrentTask {
     return _TorrentTask(metaInfo, savePath);
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
+  Torrent get metaInfo;
 
   int get allPeersNumber;
 
@@ -133,6 +134,8 @@ class _TorrentTask implements TorrentTask, AnnounceOptionsProvider {
   PeersManager? _peersManager;
 
   final Torrent _metaInfo;
+  @override
+  Torrent get metaInfo => _metaInfo;
 
   final String _savePath;
 
