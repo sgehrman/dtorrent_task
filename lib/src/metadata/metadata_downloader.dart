@@ -54,6 +54,7 @@ class MetadataDownloader
   final Set<InternetAddress> _incomingAddress = {};
 
   final DHT _dht = DHT();
+  DHT get dht => _dht;
 
   bool _running = false;
 
