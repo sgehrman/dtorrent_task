@@ -5,30 +5,27 @@ import 'dart:typed_data';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/httpserver/server.dart';
 import 'package:dtorrent_task/src/lsd/lsd.dart';
+import 'package:dtorrent_task/src/lsd/lsd_events.dart';
+import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
 import 'package:dtorrent_task/src/piece/base_piece_selector.dart';
+import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
 
-class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
+class TorrentStream
+    with EventsEmittable<TaskEvent>
+    implements TorrentTask, AnnounceOptionsProvider {
   static InternetAddress LOCAL_ADDRESS =
       InternetAddress.fromRawAddress(Uint8List.fromList([127, 0, 0, 1]));
-
-  final Set<void Function()> _taskCompleteHandlers = {};
-
-  final Set<void Function(String filePath)> _fileCompleteHandlers = {};
-
-  final Set<void Function()> _stopHandlers = {};
-
-  final Set<void Function()> _resumeHandlers = {};
-
-  final Set<void Function()> _pauseHandlers = {};
 
   TorrentAnnounceTracker? _tracker;
 
@@ -59,6 +56,11 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
   final Set<InternetAddress> _comingIp = {};
 
   bool _paused = false;
+
+  EventsListener<TorrentAnnounceEvent>? trackerListener;
+  EventsListener<PeersManagerEvent>? peersManagerListener;
+  EventsListener<DownloadFileManagerEvent>? fileManagerListener;
+  EventsListener<LSDEvent>? lsdListener;
 
   TorrentStream(this._metaInfo, this._savePath) {
     _peerId = generatePeerId();
@@ -127,20 +129,20 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
         type: type, socket: socket);
   }
 
-  void _whenTaskDownloadComplete() async {
+  void _whenTaskDownloadComplete(AllComplete event) async {
     await _peersManager
         ?.disposeAllSeeder('Download complete,disconnect seeder');
     await _tracker?.complete();
-    _fireTaskComplete();
+    events.emit(TaskCompleted());
   }
 
-  void _whenFileDownloadComplete(String filePath) {
-    _fireFileComplete(filePath);
+  void _whenFileDownloadComplete(DownloadManagerFileCompleted event) {
+    events.emit(TaskFileCompleted(event.filePath));
   }
 
-  void _processTrackerPeerEvent(Tracker source, PeerEvent? event) {
-    if (event == null) return;
-    var ps = event.peers;
+  void _processTrackerPeerEvent(AnnouncePeerEventEvent event) {
+    if (event.event == null) return;
+    var ps = event.event!.peers;
     if (ps.isNotEmpty) {
       for (var url in ps) {
         _processNewPeerFound(url, PeerSource.tracker);
@@ -148,7 +150,7 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
     }
   }
 
-  void _processLSDPeerEvent(CompactAddress address, String infoHash) {
+  void _processLSDPeerEvent(LSDNewPeer event) {
     print('There is LSD! !');
   }
 
@@ -248,7 +250,7 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
     if (_paused) return;
     _paused = true;
     _peersManager?.pause();
-    _fireTaskPaused();
+    events.emit(TaskPaused());
   }
 
   @override
@@ -259,7 +261,7 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
     if (isPaused) {
       _paused = false;
       _peersManager?.resume();
-      _fireTaskResume();
+      events.emit(TaskResumed());
     }
   }
 
@@ -281,11 +283,17 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
     map['uploaded'] = _stateFile!.uploaded;
     map['total_length'] = _metaInfo.length;
     // Outgoing peer:
-    _tracker?.onPeerEvent(_processTrackerPeerEvent);
-    _peersManager?.onAllComplete(_whenTaskDownloadComplete);
-    _fileManager?.onFileComplete(_whenFileDownloadComplete);
+    trackerListener = _tracker?.createListener();
+    peersManagerListener = _peersManager?.createListener();
+    fileManagerListener = _fileManager?.createListener();
+    lsdListener = _lsd?.createListener();
+    trackerListener?.on<AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
-    _lsd?.onLSDPeer(_processLSDPeerEvent);
+    peersManagerListener?.on<AllComplete>(_whenTaskDownloadComplete);
+    fileManagerListener
+        ?.on<DownloadManagerFileCompleted>(_whenFileDownloadComplete);
+    lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
+
     _lsd?.start();
 
     // _dht?.announce(
@@ -304,25 +312,16 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
   @override
   Future stop([bool force = false]) async {
     await _tracker?.stop(force);
-    Set<Function>? tempHandler = Set<Function>.from(_stopHandlers);
-    for (var element in tempHandler) {
-      Timer.run(() => element());
-    }
-    tempHandler.clear();
-    tempHandler = null;
+    events.emit(TaskStopped());
   }
 
   Future dispose() async {
     _dhtRepeatTimer?.cancel();
     _dhtRepeatTimer = null;
-    _fileCompleteHandlers.clear();
-    _taskCompleteHandlers.clear();
-    _pauseHandlers.clear();
-    _resumeHandlers.clear();
-    _stopHandlers.clear();
-    _tracker?.offPeerEvent(_processTrackerPeerEvent);
-    _peersManager?.offAllComplete(_whenTaskDownloadComplete);
-    _fileManager?.offFileComplete(_whenFileDownloadComplete);
+    trackerListener?.dispose();
+    fileManagerListener?.dispose();
+    peersManagerListener?.dispose();
+    lsdListener?.dispose();
     // This is in order, first stop the tracker, then stop listening on the server socket and all peers, finally close the file system.
     await _tracker?.dispose();
     _tracker = null;
@@ -357,68 +356,6 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
   }
 
   @override
-  bool offFileComplete(void Function(String filepath) handler) {
-    return _fileCompleteHandlers.remove(handler);
-  }
-
-  void _fireFileComplete(String filepath) {
-    for (var handler in _fileCompleteHandlers) {
-      Timer.run(() => handler(filepath));
-    }
-  }
-
-  @override
-  bool offPause(void Function() handler) {
-    return _pauseHandlers.remove(handler);
-  }
-
-  @override
-  bool offResume(void Function() handler) {
-    return _resumeHandlers.remove(handler);
-  }
-
-  @override
-  bool offStop(void Function() handler) {
-    return _stopHandlers.remove(handler);
-  }
-
-  @override
-  bool offTaskComplete(void Function() handler) {
-    return _taskCompleteHandlers.remove(handler);
-  }
-
-  @override
-  bool onFileComplete(void Function(String filepath) handler) {
-    return _fileCompleteHandlers.add(handler);
-  }
-
-  @override
-  bool onPause(void Function() handler) {
-    return _pauseHandlers.add(handler);
-  }
-
-  @override
-  bool onResume(void Function() handler) {
-    return _resumeHandlers.add(handler);
-  }
-
-  @override
-  bool onStop(void Function() handler) {
-    return _stopHandlers.add(handler);
-  }
-
-  @override
-  bool onTaskComplete(void Function() handler) {
-    return _taskCompleteHandlers.add(handler);
-  }
-
-  void _fireTaskComplete() {
-    for (var element in _taskCompleteHandlers) {
-      Timer.run(() => element());
-    }
-  }
-
-  @override
   int? get downloaded => _fileManager?.downloaded;
 
   @override
@@ -427,18 +364,6 @@ class TorrentStream implements TorrentTask, AnnounceOptionsProvider {
     if (d == null) return 0.0;
     var l = _metaInfo.length;
     return d / l;
-  }
-
-  void _fireTaskPaused() {
-    for (var element in _pauseHandlers) {
-      Timer.run(() => element());
-    }
-  }
-
-  void _fireTaskResume() {
-    for (var element in _resumeHandlers) {
-      Timer.run(() => element());
-    }
   }
 
   @override

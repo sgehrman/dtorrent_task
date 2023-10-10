@@ -1,22 +1,20 @@
-import 'dart:async';
-
 import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/bitfield.dart';
 import 'piece.dart';
 import 'piece_provider.dart';
 import 'piece_selector.dart';
 
-typedef PieceCompleteHandle = void Function(int pieceIndex);
-
-class PieceManager implements PieceProvider {
+class PieceManager
+    with EventsEmittable<PieceManagerEvent>
+    implements PieceProvider {
   bool _isFirst = true;
 
   final Map<int, Piece> _pieces = {};
   Map<int, Piece> get pieces => _pieces;
 
   // final Set<int> _completedPieces = <int>{};
-
-  final List<PieceCompleteHandle> _pieceCompleteHandles = [];
 
   final Set<int> _downloadingPieces = <int>{};
   Set<int> get downloadingPieces => _downloadingPieces;
@@ -41,14 +39,6 @@ class PieceManager implements PieceProvider {
       var piece = Piece(metaInfo.pieces[i], i, byteLength);
       if (!bitfield.getBit(i)) _pieces[i] = piece;
     }
-  }
-
-  void onPieceComplete(PieceCompleteHandle handle) {
-    _pieceCompleteHandles.add(handle);
-  }
-
-  void offPieceComplete(PieceCompleteHandle handle) {
-    _pieceCompleteHandles.remove(handle);
   }
 
   /// This interface is used for FileManager callback.
@@ -115,9 +105,7 @@ class PieceManager implements PieceProvider {
     _downloadingPieces.remove(index);
     if (piece != null) {
       piece.dispose();
-      for (var handle in _pieceCompleteHandles) {
-        Timer.run(() => handle(index));
-      }
+      events.emit(PieceCompleted(index));
     }
   }
 
@@ -127,12 +115,12 @@ class PieceManager implements PieceProvider {
 
   void dispose() {
     if (isDisposed) return;
+    events.dispose();
     _disposed = true;
     _pieces.forEach((key, value) {
       value.dispose();
     });
     _pieces.clear();
-    _pieceCompleteHandles.clear();
     _downloadingPieces.clear();
   }
 

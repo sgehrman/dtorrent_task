@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/task_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
 /// This example is for connect local
 Future<void> main() async {
@@ -14,19 +16,23 @@ Future<void> main() async {
   var task = TorrentTask.newTask(model, 'tmp${Platform.pathSeparator}test');
   Timer? timer;
   Timer? timer1;
-  task.onFileComplete((filepath) {
-    print('$filepath downloaded complete');
-  });
+  EventsListener<TaskEvent> listener = task.createListener();
+  listener
+    ..on<TaskCompleted>((event) {
+      print('Complete!');
+      timer?.cancel();
+      timer1?.cancel();
+      task.stop();
+    })
+    ..on<TaskStopped>(((event) {
+      print('Task Stopped');
+    }))
+    ..on<TaskFileCompleted>(
+      (event) {
+        print('${event.filePath} downloaded complete');
+      },
+    );
 
-  task.onTaskComplete(() {
-    print('Complete!');
-    timer?.cancel();
-    timer1?.cancel();
-    task.stop();
-  });
-  task.onStop(() async {
-    print('Task Stopped');
-  });
   await task.start();
 
   timer = Timer.periodic(Duration(seconds: 2), (timer) {

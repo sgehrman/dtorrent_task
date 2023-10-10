@@ -83,7 +83,8 @@ class MetadataDownloader
     if (_running) return;
     _running = true;
     _dht.announce(String.fromCharCodes(_infoHashBuffer), 0);
-    _dht.onNewPeer(_processDHTPeer);
+    var dhtListener = _dht.createListener();
+    dhtListener.on<NewPeerEvent>((event) => _processDHTPeer);
     _dht.bootstrap();
   }
 
@@ -116,9 +117,9 @@ class MetadataDownloader
     return _handlers.remove(h);
   }
 
-  void _processDHTPeer(CompactAddress peer, String infoHash) {
-    if (infoHash == _infoHashString) {
-      addNewPeerAddress(peer, PeerSource.dht);
+  void _processDHTPeer(NewPeerEvent event) {
+    if (event.infoHash == _infoHashString) {
+      addNewPeerAddress(event.address, PeerSource.dht);
     }
   }
 

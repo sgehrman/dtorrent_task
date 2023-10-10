@@ -5,6 +5,10 @@ import 'dart:io';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
+import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
 import 'bitfield.dart';
 import 'peer.dart';
@@ -25,7 +29,7 @@ const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024 * 10; // 10 mb
 ///
 /// TODO:
 /// - The external Suggest Piece/Fast Allow requests are not handled.
-class PeersManager with Holepunch, PEX {
+class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   final List<InternetAddress> IGNORE_IPS = [
     InternetAddress.tryParse('0.0.0.0')!,
     InternetAddress.tryParse('127.0.0.1')!
@@ -47,10 +51,6 @@ class PeersManager with Holepunch, PEX {
   int maxWriteBufferSize;
 
   final _flushIndicesBuffer = <int>{};
-
-  final Set<void Function()> _allCompleteHandles = {};
-
-  final Set<void Function()> _noActivePeerHandles = {};
 
   final Torrent _metaInfo;
 
@@ -81,14 +81,19 @@ class PeersManager with Holepunch, PEX {
   final Map<String, List> _pausedRemoteRequest = {};
 
   final String _localPeerId;
+  EventsListener<DownloadFileManagerEvent>? fileManagerListener;
+  EventsListener<PieceManagerEvent>? piecesManagerListener;
 
   PeersManager(this._localPeerId, this._pieceManager, this._pieceProvider,
       this._fileManager, this._metaInfo,
       [this.maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE]) {
     // hook FileManager and PieceManager
-    _fileManager.onSubPieceWriteComplete(_processSubPieceWriteComplete);
-    _fileManager.onSubPieceReadComplete(readSubPieceComplete);
-    _pieceManager.onPieceComplete(_processPieceWriteComplete);
+    fileManagerListener = _fileManager.createListener();
+    fileManagerListener
+      ?..on<SubPieceWriteCompleted>(_processSubPieceWriteComplete)
+      ..on<SubPieceReadCompleted>(readSubPieceComplete);
+    piecesManagerListener = _pieceManager.createListener();
+    piecesManagerListener?.on<PieceCompleted>(_processPieceWriteComplete);
     _init();
     // Start pex interval
     startPEX();
@@ -285,22 +290,23 @@ class PeersManager with Holepunch, PEX {
     }
   }
 
-  void _processSubPieceWriteComplete(int pieceIndex, int begin, int length) {
-    _pieceManager.processSubPieceWriteComplete(pieceIndex, begin, length);
+  void _processSubPieceWriteComplete(SubPieceWriteCompleted event) {
+    _pieceManager.processSubPieceWriteComplete(
+        event.pieceIndex, event.begin, event.length);
   }
 
-  void _processPieceWriteComplete(int index) async {
-    if (_fileManager.localHave(index)) return;
-    await _fileManager.updateBitfield(index);
+  void _processPieceWriteComplete(PieceCompleted event) async {
+    if (_fileManager.localHave(event.pieceIndex)) return;
+    await _fileManager.updateBitfield(event.pieceIndex);
     for (var peer in _activePeers) {
       // if (!peer.remoteHave(index)) {
-      peer.sendHave(index);
+      peer.sendHave(event.pieceIndex);
       // }
     }
-    _flushIndicesBuffer.add(index);
+    _flushIndicesBuffer.add(event.pieceIndex);
     if (_fileManager.isAllComplete) {
       await _flushFiles(_flushIndicesBuffer);
-      _fireAllComplete();
+      events.emit(AllComplete());
     } else {
       await _flushFiles(_flushIndicesBuffer);
     }
@@ -318,36 +324,22 @@ class PeersManager with Holepunch, PEX {
     return;
   }
 
-  void _fireAllComplete() {
-    for (var element in _allCompleteHandles) {
-      Timer.run(() => element());
-    }
-  }
-
-  bool onAllComplete(void Function() h) {
-    return _allCompleteHandles.add(h);
-  }
-
-  bool offAllComplete(void Function() h) {
-    return _allCompleteHandles.remove(h);
-  }
-
   /// When read the resource content complete , invoke this method to notify
   /// this class to send it to related peer.
   ///
   /// [pieceIndex] is the index of the piece, [begin] is the byte index of the whole
   /// contents , [block] should be uint8 list, it's the sub-piece contents bytes.
-  void readSubPieceComplete(int pieceIndex, int begin, List<int> block) {
+  void readSubPieceComplete(SubPieceReadCompleted event) {
     var dindex = [];
     for (var i = 0; i < _remoteRequest.length; i++) {
       var request = _remoteRequest[i];
-      if (request[0] == pieceIndex && request[1] == begin) {
+      if (request[0] == event.pieceIndex && request[1] == event.begin) {
         dindex.add(i);
         var peer = request[2] as Peer;
         if (!peer.isDisposed) {
-          if (peer.sendPiece(pieceIndex, begin, block)) {
-            _uploaded += block.length;
-            _uploadedNotifySize += block.length;
+          if (peer.sendPiece(event.pieceIndex, event.begin, event.block)) {
+            _uploaded += event.block.length;
+            _uploadedNotifySize += event.block.length;
           }
         }
         break;
@@ -665,18 +657,15 @@ class PeersManager with Holepunch, PEX {
   Future dispose() async {
     if (isDisposed) return;
     _disposed = true;
+    events.dispose();
+    fileManagerListener?.dispose();
+    piecesManagerListener?.dispose();
     clearHolepunch();
     clearPEX();
     _endTime = DateTime.now().millisecondsSinceEpoch;
 
-    _fileManager.offSubPieceWriteComplete(_processSubPieceWriteComplete);
-    _fileManager.offSubPieceReadComplete(readSubPieceComplete);
-    _pieceManager.offPieceComplete(_processPieceWriteComplete);
-
     await _flushFiles(_flushIndicesBuffer);
     _flushIndicesBuffer.clear();
-    _allCompleteHandles.clear();
-    _noActivePeerHandles.clear();
     _remoteRequest.clear();
     _pausedRequest.clear();
     _pausedRemoteRequest.clear();

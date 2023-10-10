@@ -6,7 +6,9 @@ import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/metadata/metadata_downloader.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
 void main(List<String> args) async {
   var infohashString = '217bddb5816f2abc56ce1d9fe430711542b109cc';
@@ -16,6 +18,7 @@ void main(List<String> args) async {
   metadata.startDownload();
   // so for this example , I use the public trackers to help MetaData download to search Peer nodes:
   var tracker = TorrentAnnounceTracker(metadata);
+  var trackerListener = tracker.createListener();
 
   // When metadata contents download complete , it will send this event and stop itself:
   metadata.onDownloadComplete((data) async {
@@ -29,15 +32,18 @@ void main(List<String> args) async {
       var startTime = DateTime.now().millisecondsSinceEpoch;
       var task = TorrentTask.newTask(torrentModel, 'tmp');
       Timer? timer;
-      task.onTaskComplete(() {
-        print(
-            'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
-        timer?.cancel();
-        task.stop();
-      });
-      task.onStop(() async {
-        print('Task Stopped');
-      });
+      EventsListener<TaskEvent> listener = task.createListener();
+      listener
+        ..on<TaskCompleted>((event) {
+          print(
+              'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
+          timer?.cancel();
+          task.stop();
+        })
+        ..on<TaskStopped>(((event) {
+          print('Task Stopped');
+        }));
+
       timer = Timer.periodic(Duration(seconds: 2), (timer) async {
         var progress = '${(task.progress * 100).toStringAsFixed(2)}%';
         var ads =
@@ -63,10 +69,9 @@ void main(List<String> args) async {
   });
 
   var u8List = Uint8List.fromList(metadata.infoHashBuffer);
-
-  tracker.onPeerEvent((source, event) {
-    if (event == null) return;
-    var peers = event.peers;
+  trackerListener.on<AnnouncePeerEventEvent>((event) {
+    if (event.event == null) return;
+    var peers = event.event!.peers;
     for (var element in peers) {
       metadata.addNewPeerAddress(element, PeerSource.tracker);
     }

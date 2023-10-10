@@ -3,18 +3,14 @@ import 'dart:developer';
 import 'dart:io';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/peer_base.dart';
 
 import 'download_file.dart';
 import 'state_file.dart';
 
-typedef SubPieceCompleteHandle = void Function(
-    int pieceIndex, int begin, int length);
-
-typedef SubPieceReadHandle = void Function(
-    int pieceIndex, int begin, List<int> block);
-
-class DownloadFileManager {
+class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   final Torrent metainfo;
 
   final Set<DownloadFile> _files = {};
@@ -25,14 +21,6 @@ class DownloadFileManager {
   List<List<DownloadFile>?>? get piece2fileMap => _piece2fileMap;
 
   final Map<String, List<int>?> _file2pieceMap = {};
-
-  final List<SubPieceCompleteHandle> _subPieceCompleteHandles = [];
-
-  final List<SubPieceCompleteHandle> _subPieceFailedHandles = [];
-
-  final List<SubPieceReadHandle> _subPieceReadHandles = [];
-
-  final List<void Function(String path)> _fileCompleteHandles = [];
 
   final StateFile _stateFile;
 
@@ -70,18 +58,6 @@ class DownloadFileManager {
 
   int get piecesNumber => _stateFile.bitfield.piecesNum;
 
-  void _subPieceWriteComplete(int pieceIndex, int begin, int length) {
-    for (var handle in _subPieceCompleteHandles) {
-      Timer.run(() => handle(pieceIndex, begin, length));
-    }
-  }
-
-  void _subPieceWriteFailed(int pieceIndex, int begin, int length) {
-    for (var handle in _subPieceFailedHandles) {
-      Timer.run(() => handle(pieceIndex, begin, length));
-    }
-  }
-
   Future<bool> updateBitfield(int index, [bool have = true]) {
     return _stateFile.updateBitfield(index, have);
   }
@@ -92,12 +68,6 @@ class DownloadFileManager {
 
   Future<bool> updateUpload(int uploaded) {
     return _stateFile.updateUploaded(uploaded);
-  }
-
-  void _subPieceReadComplete(int pieceIndex, int begin, List<int> block) {
-    for (var h in _subPieceReadHandles) {
-      Timer.run(() => h(pieceIndex, begin, block));
-    }
   }
 
   int get downloaded => _stateFile.downloaded;
@@ -124,7 +94,7 @@ class DownloadFileManager {
         }
         if (pieces.isEmpty && _file2pieceMap[file.filePath] != null) {
           _file2pieceMap[file.filePath] = null;
-          _fireFileComplete(file.filePath);
+          events.emit(DownloadManagerFileCompleted(file.filePath));
         }
       }
     }
@@ -133,20 +103,6 @@ class DownloadFileManager {
         'downloaded：${d / (1024 * 1024)} mb , Progress ${((d / metainfo.length) * 10000).toInt() / 100} %';
     log(msg, name: runtimeType.toString());
     return true;
-  }
-
-  void onFileComplete(void Function(String) h) {
-    _fileCompleteHandles.add(h);
-  }
-
-  void offFileComplete(void Function(String) h) {
-    _fileCompleteHandles.remove(h);
-  }
-
-  void _fireFileComplete(String path) {
-    for (var element in _fileCompleteHandles) {
-      Timer.run(() => element(path));
-    }
   }
 
   void _initFileMap(String directory) {
@@ -177,30 +133,6 @@ class DownloadFileManager {
     }
   }
 
-  void onSubPieceReadComplete(SubPieceReadHandle handle) {
-    _subPieceReadHandles.add(handle);
-  }
-
-  void offSubPieceReadComplete(SubPieceReadHandle handle) {
-    _subPieceReadHandles.remove(handle);
-  }
-
-  void onSubPieceWriteComplete(SubPieceCompleteHandle handle) {
-    _subPieceCompleteHandles.add(handle);
-  }
-
-  void offSubPieceWriteComplete(SubPieceCompleteHandle handle) {
-    _subPieceCompleteHandles.remove(handle);
-  }
-
-  void onSubPieceWriteFailed(SubPieceCompleteHandle handle) {
-    _subPieceFailedHandles.add(handle);
-  }
-
-  void offSubPieceWriteFailed(SubPieceCompleteHandle handle) {
-    _subPieceFailedHandles.remove(handle);
-  }
-
   void readFile(int pieceIndex, int begin, int length) {
     var tempFiles = _piece2fileMap?[pieceIndex];
     var ps = pieceIndex * metainfo.pieceLength + begin;
@@ -219,7 +151,7 @@ class DownloadFileManager {
     Stream.fromFutures(futures).fold<List<int>>(<int>[], (previous, element) {
       if (element != null && element is List<int>) previous.addAll(element);
       return previous;
-    }).then((re) => _subPieceReadComplete(pieceIndex, begin, re));
+    }).then((re) => events.emit(SubPieceReadCompleted(pieceIndex, begin, re)));
     return;
   }
 
@@ -249,9 +181,9 @@ class DownloadFileManager {
       return p && a;
     }).then((result) {
       if (result) {
-        _subPieceWriteComplete(pieceIndex, begin, blockSize);
+        events.emit(SubPieceWriteCompleted(pieceIndex, begin, blockSize));
       } else {
-        _subPieceWriteFailed(pieceIndex, begin, blockSize);
+        events.emit(SubPieceWriteFailed(pieceIndex, begin, blockSize));
       }
     });
     return;
@@ -281,6 +213,7 @@ class DownloadFileManager {
   }
 
   Future close() async {
+    events.dispose();
     await _stateFile.close();
     for (var i = 0; i < _files.length; i++) {
       var file = _files.elementAt(i);
@@ -290,10 +223,6 @@ class DownloadFileManager {
   }
 
   void _clean() {
-    _subPieceCompleteHandles.clear();
-    _subPieceFailedHandles.clear();
-    _subPieceReadHandles.clear();
-    _fileCompleteHandles.clear();
     _file2pieceMap.clear();
     _piece2fileMap = null;
   }

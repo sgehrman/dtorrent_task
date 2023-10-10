@@ -4,11 +4,13 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task/src/lsd/lsd_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
 // const LSD_HOST = '239.192.152.143';
 // const LSD_PORT = 6771;
 
-class LSD {
+class LSD with EventsEmittable<LSDEvent> {
   static final String LSD_HOST_STRING = '239.192.152.143:6771\r\n';
 
   static final InternetAddress LSD_HOST =
@@ -28,9 +30,6 @@ class LSD {
   int? port;
 
   final String _peerId;
-
-  final Set<Function(CompactAddress address, String infoHashHex)>
-      _peerHandlers = <Function(CompactAddress, String)>{};
 
   LSD(this._infoHashHex, this._peerId);
 
@@ -52,19 +51,9 @@ class LSD {
     await _announce();
   }
 
-  bool onLSDPeer(void Function(CompactAddress address, String infoHashHex) h) {
-    return _peerHandlers.add(h);
-  }
-
-  bool offLSDPeer(void Function(CompactAddress address, String infoHashHex) h) {
-    return _peerHandlers.remove(h);
-  }
-
   void _fireLSDPeerEvent(InternetAddress address, int port, String infoHash) {
     var add = CompactAddress(address, port);
-    for (var element in _peerHandlers) {
-      Timer.run(() => element(add, infoHash));
-    }
+    events.emit(LSDNewPeer(add, infoHash));
   }
 
   void _processReceive(String str, InternetAddress source) {
@@ -130,9 +119,9 @@ class LSD {
 
   void close() {
     if (isClosed) return;
+    events.dispose();
     _closed = true;
     _socket?.close();
     _timer?.cancel();
-    _peerHandlers.clear();
   }
 }

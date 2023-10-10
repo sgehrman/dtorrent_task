@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/httpserver/server.dart';
 import 'package:dtorrent_task/src/stream/torrent_stream.dart';
+import 'package:dtorrent_task/src/task_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
 Future<void> main(List<String> args) async {
   var torrentFile = 'example${Platform.pathSeparator}vice-girls.torrent';
@@ -14,16 +16,18 @@ Future<void> main(List<String> args) async {
   Timer? timer;
   Timer? timer1;
   var startTime = DateTime.now().millisecondsSinceEpoch;
-  task.onTaskComplete(() {
-    print(
-        'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
-    timer?.cancel();
-    timer1?.cancel();
-    task.stop();
-  });
-  task.onStop(() async {
-    print('Task Stopped');
-  });
+  EventsListener<TaskEvent> listener = task.createListener();
+  listener
+    ..on<TaskCompleted>((event) {
+      print(
+          'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
+      timer?.cancel();
+      timer1?.cancel();
+      task.stop();
+    })
+    ..on<TaskStopped>(((event) {
+      print('Task Stopped');
+    }));
   var map = await task.start();
 
   print(map);

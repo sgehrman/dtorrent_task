@@ -6,8 +6,6 @@ const READ = 'read';
 const FLUSH = 'flush';
 const WRITE = 'write';
 
-typedef FileDownloadCompleteHandle = void Function(String filePath);
-
 class DownloadFile {
   final String filePath;
   final String originalFileName;
