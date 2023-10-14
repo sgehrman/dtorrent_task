@@ -79,13 +79,16 @@ class MetadataDownloader
     localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
   }
 
-  void startDownload() {
+  Future<void> startDownload() async {
     if (_running) return;
     _running = true;
-    _dht.announce(String.fromCharCodes(_infoHashBuffer), 0);
+
     var dhtListener = _dht.createListener();
     dhtListener.on<NewPeerEvent>((event) => _processDHTPeer);
-    _dht.bootstrap();
+    var port = await _dht.bootstrap();
+    if (port != null) {
+      _dht.announce(String.fromCharCodes(_infoHashBuffer), port);
+    }
   }
 
   Future stop() async {

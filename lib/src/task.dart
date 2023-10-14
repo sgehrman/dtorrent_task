@@ -131,6 +131,7 @@ class _TorrentTask
   EventsListener<PeersManagerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
   EventsListener<LSDEvent>? lsdListener;
+  EventsListener<DHTEvent>? _dhtListener;
 
   _TorrentTask(this._metaInfo, this._savePath) {
     _peerId = generatePeerId();
@@ -324,11 +325,14 @@ class _TorrentTask
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
     // _lsd?.port = _utpServer?.port;
     _lsd?.start();
+    _dhtListener = _dht?.createListener();
+    _dhtListener?.on<NewPeerEvent>(
+        (event) => _processDHTPeer(event.address, event.infoHash));
+    _dht?.announce(
+        String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
 
-    // _dht?.announce(
-    //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
-    // _dht?.onNewPeer(_processDHTPeer);
-    // _dht?.bootstrap();
+    _dht?.bootstrap();
+
     if (_fileManager != null && _fileManager!.isAllComplete) {
       _tracker?.complete();
     } else {
