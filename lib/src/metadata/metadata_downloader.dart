@@ -84,7 +84,7 @@ class MetadataDownloader
     _running = true;
 
     var dhtListener = _dht.createListener();
-    dhtListener.on<NewPeerEvent>((event) => _processDHTPeer);
+    dhtListener.on<NewPeerEvent>(_processDHTPeer);
     var port = await _dht.bootstrap();
     if (port != null) {
       _dht.announce(String.fromCharCodes(_infoHashBuffer), port);
@@ -121,7 +121,7 @@ class MetadataDownloader
   }
 
   void _processDHTPeer(NewPeerEvent event) {
-    if (event.infoHash == _infoHashString) {
+    if (event.infoHash == String.fromCharCodes(_infoHashBuffer)) {
       addNewPeerAddress(event.address, PeerSource.dht);
     }
   }
