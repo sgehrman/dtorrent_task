@@ -18,6 +18,15 @@ import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
+class StreamWithLength<T> {
+  Stream<T> stream;
+  int length;
+  StreamWithLength({
+    required this.stream,
+    required this.length,
+  });
+}
+
 class TorrentStream
     with EventsEmittable<TaskEvent>
     implements TorrentTask, AnnounceOptionsProvider {
@@ -202,7 +211,7 @@ class TorrentStream
         socket: socket);
   }
 
-  Stream<List<int>>? createStream(
+  StreamWithLength<List<int>>? createStream(
       {int filePosition = 0, int? endPosition, String? fileName}) {
     if (_fileManager == null || _peersManager == null) return null;
     TorrentFile? file;
@@ -263,9 +272,8 @@ class TorrentStream
       endPosition = croppedEndPosition;
     }
 
-    var stream =
-        File(localFile.filePath).openRead(filePosition, endPosition + 1);
-    return stream;
+    var stream = File(localFile.filePath).openRead(filePosition, endPosition);
+    return StreamWithLength(stream: stream, length: endPosition - filePosition);
     // var future = localFile.requestRead(filePosition, endPosition);
     // Stream.fromFuture(future);
 
@@ -303,6 +311,9 @@ class TorrentStream
 
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
+    for (var file in _fileManager!.files) {
+      await file.requestFlush();
+    }
     await _streamingServer?.start().then((event) => events.emit(event));
     _serverSocket?.listen(_hookInPeer);
 

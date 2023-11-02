@@ -4,14 +4,25 @@ import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:dtorrent_task/dtorrent_task.dart';
 import 'package:mime/mime.dart';
 
-import 'package:dtorrent_task/dtorrent_task.dart';
-
 class Range {
-  int? start;
-  int? end;
+  int start;
+  int end;
   Range(this.start, this.end);
+
+  @override
+  String toString() => 'Range(start: $start, end: $end)';
+
+  Map<String, dynamic> toMap() {
+    return {
+      'start': start,
+      'end': end,
+    };
+  }
+
+  String toJson() => json.encode(toMap());
 }
 
 class RangeParser {
@@ -19,15 +30,21 @@ class RangeParser {
   String type = 'bytes';
 
   RangeParser(String rangeString, int fileLength) {
-    type = rangeString.split('=')[0];
-    var rangesStr = rangeString.split('=')[1];
+    var rangeStringList = rangeString.split('=');
+    String rangesStr;
+    if (rangeStringList.length > 1) {
+      type = rangeStringList[0].trim();
+      rangesStr = rangeStringList[1].trim();
+    } else {
+      rangesStr = rangeStringList[0].trim();
+    }
     var parseRanges = rangesStr.split(',').map((r) => r.trim());
 
     for (var range in parseRanges) {
       var tmp = range.split('-');
       var start = int.tryParse(tmp[0]);
-      var end = int.tryParse(tmp[1]);
-      var tmpRange = Range(start ?? 0, end ?? fileLength);
+      var end = int.tryParse(tmp[1]) ?? fileLength;
+      var tmpRange = Range(start ?? fileLength - end, end);
       ranges.add(tmpRange);
     }
   }
@@ -41,9 +58,9 @@ Stream<T> streamDelayer<T>(Stream<T> inputStream, Duration delay) async* {
 }
 
 class StreamingServer {
-  DownloadFileManager _fileManager;
+  final DownloadFileManager _fileManager;
   HttpServer? _server;
-  TorrentStream _torrentStream;
+  final TorrentStream _torrentStream;
   StreamSubscription<HttpRequest>? _streamSubscription;
   InternetAddress address = InternetAddress.anyIPv4;
   int port;
@@ -154,29 +171,27 @@ class StreamingServer {
       request.response.headers.contentType = ContentType.parse(mime);
     }
 
-    Stream<List<int>>? bytes;
-    if (range == null) {
-      // request.response.headers.contentLength = file.length;
-      if (request.method == 'HEAD') return request.response.close();
-      bytes = _torrentStream.createStream(
-          filePosition: 0, endPosition: file.length, fileName: file.name);
-    } else if (ranges != null &&
-        ranges.ranges.isNotEmpty &&
-        ranges.ranges[0].start != null) {
-      request.response.statusCode = 206;
-      request.response.headers.contentLength =
-          ranges.ranges[0].end! - ranges.ranges[0].start! + 1;
-      request.response.headers.add('Content-Range',
-          'bytes ${ranges.ranges[0].start!}-${ranges.ranges[0].end}/${file.length}');
-      if (request.method == 'HEAD') return request.response.close();
-      bytes = _torrentStream.createStream(
-          filePosition: ranges.ranges.first.start ?? 0,
-          endPosition: ranges.ranges.first.end ?? file.length,
-          fileName: file.name);
-    }
+    StreamWithLength<List<int>>? bytes;
+    int startPosition = ranges?.ranges.first.start ?? 0;
+    int endPosition =
+        ranges != null ? ranges.ranges.first.end + 1 : file.length;
+
+    bytes = _torrentStream.createStream(
+        filePosition: startPosition,
+        endPosition: endPosition,
+        fileName: file.name);
+    if (request.method == 'HEAD') return request.response.close();
+
     if (bytes == null) return;
+    request.response.headers.contentLength = bytes.length;
+    if (ranges != null && ranges.ranges.isNotEmpty) {
+      request.response.statusCode = 206;
+      request.response.headers.add('Content-Range',
+          'bytes ${ranges.ranges[0].start}-${ranges.ranges[0].end}/${file.length}');
+    }
+
     // request.response.headers.chunkedTransferEncoding = true;
-    await request.response.addStream(bytes);
+    await request.response.addStream(bytes.stream);
     await request.response.close();
   }
 
