@@ -8,6 +8,8 @@ class TaskPaused implements TaskEvent {}
 
 class TaskResumed implements TaskEvent {}
 
+class TaskStarted implements TaskEvent {}
+
 class TaskFileCompleted implements TaskEvent {
   final String filePath;
   TaskFileCompleted(

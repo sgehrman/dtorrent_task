@@ -17,6 +17,7 @@ dependencies:
   dart_ipify: ^1.1.1
   events_emitter2: ^1.0.3
   mime: ^1.0.4
+  collection: any
 
 dev_dependencies:
   lints: ^2.0.1

@@ -1,3 +1,5 @@
+import 'package:dtorrent_task/src/peer/peer.dart';
+
 import 'piece.dart';
 import 'piece_provider.dart';
 
@@ -11,6 +13,6 @@ abstract class PieceSelector {
   /// This method retrieves the corresponding Piece object using [provider] and [piecesIndexList], and filters it within the [piecesIndexList] collection.
   ///
   Piece? selectPiece(
-      String remotePeerId, List<int> piecesIndexList, PieceProvider provider,
-      [bool first = false]);
+      Peer peer, List<int> remoteHavePieces, PieceProvider provider,
+      [bool first = false, Set<int>? suggestPieces]);
 }

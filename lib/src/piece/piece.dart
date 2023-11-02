@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import '../peer/peer.dart';
 import '../utils.dart';
 
 class Piece {
@@ -9,7 +10,8 @@ class Piece {
 
   final int index;
 
-  final Set<String> _availablePeers = <String>{};
+  final Set<Peer> _availablePeers = <Peer>{};
+  Set<Peer> get availablePeers => _availablePeers;
 
   late Queue<int> _subPiecesQueue;
 
@@ -19,8 +21,10 @@ class Piece {
 
   int _subPiecesCount = 0;
 
+  bool flushed = false;
+
   Piece(this.hashString, this.index, this.byteLength,
-      [int requestLength = DEFAULT_REQUEST_LENGTH]) {
+      {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false}) {
     if (requestLength <= 0) {
       throw Exception('Request length should bigger than zero');
     }
@@ -33,6 +37,12 @@ class Piece {
     }
     _subPiecesQueue =
         Queue.from(List.generate(_subPiecesCount, (index) => index));
+    if (isComplete) {
+      flushed = true;
+      for (var subPiece in _subPiecesQueue) {
+        subPieceWriteComplete(subPiece * requestLength);
+      }
+    }
   }
 
   bool get isDownloading {
@@ -106,20 +116,20 @@ class Piece {
     return subPieceQueue.contains(subIndex);
   }
 
-  bool containsAvailablePeer(String id) {
-    return _availablePeers.contains(id);
+  bool containsAvailablePeer(Peer peer) {
+    return _availablePeers.contains(peer);
   }
 
   bool removeSubpiece(int subIndex) {
     return subPieceQueue.remove(subIndex);
   }
 
-  bool addAvailablePeer(String id) {
-    return _availablePeers.add(id);
+  bool addAvailablePeer(Peer peer) {
+    return _availablePeers.add(peer);
   }
 
-  bool removeAvailablePeer(String id) {
-    return _availablePeers.remove(id);
+  bool removeAvailablePeer(Peer peer) {
+    return _availablePeers.remove(peer);
   }
 
   void clearAvailablePeer() {

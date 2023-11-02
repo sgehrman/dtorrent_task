@@ -360,9 +360,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   void _processAllowFast(Peer peer, int index) {
     var piece = _pieceProvider[index];
     if (piece != null && piece.haveAvailableSubPiece()) {
-      piece.addAvailablePeer(peer.id);
-      _pieceManager.processDownloadingPiece(index);
-      _requestPieces(peer, index);
+      piece.addAvailablePeer(peer);
+      requestPieces(peer, index);
     }
   }
 
@@ -400,7 +399,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
     var completedPieces = peer.remoteCompletePieces;
     for (var index in completedPieces) {
-      _pieceProvider[index]?.removeAvailablePeer(peer.id);
+      _pieceProvider[index]?.removeAvailablePeer(peer);
     }
     _pausedRemoteRequest.remove(peer.id);
     var tempIndex = [];
@@ -442,7 +441,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     peer.sendHandShake();
   }
 
-  void _requestPieces(Peer peer, [int pieceIndex = -1]) async {
+  void requestPieces(Peer peer, [int pieceIndex = -1]) async {
     if (isPaused) {
       _pausedRequest.add([peer, pieceIndex]);
       return;
@@ -451,16 +450,17 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (pieceIndex != -1) {
       piece = _pieceProvider[pieceIndex];
       if (piece != null && !piece.haveAvailableSubPiece()) {
-        piece = _pieceManager.selectPiece(peer.id, peer.remoteCompletePieces,
+        piece = _pieceManager.selectPiece(peer, peer.remoteCompletePieces,
             _pieceProvider, peer.remoteSuggestPieces);
       }
     } else {
-      piece = _pieceManager.selectPiece(peer.id, peer.remoteCompletePieces,
+      piece = _pieceManager.selectPiece(peer, peer.remoteCompletePieces,
           _pieceProvider, peer.remoteSuggestPieces);
     }
     if (piece == null) return;
 
-    var subIndex = piece.popSubPiece()!;
+    var subIndex = piece.popSubPiece();
+    if (subIndex == null) return;
     var size = DEFAULT_REQUEST_LENGTH; // Block size is calculated dynamically.
     var begin = subIndex * size;
     if ((begin + size) > piece.byteLength) {
@@ -469,7 +469,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (!peer.sendRequest(piece.index, begin, size)) {
       piece.pushSubPiece(subIndex);
     } else {
-      Timer.run(() => _requestPieces(peer, pieceIndex));
+      Timer.run(() => requestPieces(peer, pieceIndex));
     }
   }
 
@@ -483,7 +483,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       piece.subPieceDownloadComplete(begin);
       if (piece.haveAvailableSubPiece()) index = -1;
     }
-    Timer.run(() => _requestPieces(peer, index));
+    Timer.run(() => requestPieces(peer, index));
   }
 
   void _processPeerHandshake(Peer peer, String remotePeerId, data) {
@@ -539,11 +539,11 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
           peer.sendInterested(true);
         } else {
           flag = true;
-          _pieceProvider[index]?.addAvailablePeer(peer.id);
+          _pieceProvider[index]?.addAvailablePeer(peer);
         }
       }
     }
-    if (flag && peer.isSleeping) Timer.run(() => _requestPieces(peer));
+    if (flag && peer.isSleeping) Timer.run(() => requestPieces(peer));
   }
 
   void _processChokeChange(Peer peer, bool choke) {
@@ -551,14 +551,14 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (!choke) {
       var completedPieces = peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.addAvailablePeer(peer.id);
+        _pieceProvider[index]?.addAvailablePeer(peer);
       }
       // Here, start notifying requests.
-      Timer.run(() => _requestPieces(peer));
+      Timer.run(() => requestPieces(peer));
     } else {
       var completedPieces = peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.removeAvailablePeer(peer.id);
+        _pieceProvider[index]?.removeAvailablePeer(peer);
       }
     }
   }
@@ -589,7 +589,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (flag) {
       for (var p in _activePeers) {
         if (p != peer && p.isSleeping) {
-          Timer.run(() => _requestPieces(p));
+          Timer.run(() => requestPieces(p));
         }
       }
     }
@@ -627,7 +627,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     for (var element in _pausedRequest) {
       var peer = element[0] as Peer;
       var index = element[1];
-      if (!peer.isDisposed) Timer.run(() => _requestPieces(peer, index));
+      if (!peer.isDisposed) Timer.run(() => requestPieces(peer, index));
     }
     _pausedRequest.clear();
 

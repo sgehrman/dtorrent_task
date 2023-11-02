@@ -1,4 +1,5 @@
 import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:dtorrent_task/src/peer/peer.dart';
 
 import 'piece.dart';
 import 'piece_provider.dart';
@@ -14,17 +15,44 @@ import 'piece_selector.dart';
 class BasePieceSelector implements PieceSelector {
   @override
   Piece? selectPiece(
-      String remotePeerId, List<int> piecesIndexList, PieceProvider provider,
-      [bool random = false]) {
+      Peer peer, List<int> remoteHavePieces, PieceProvider provider,
+      [bool random = false, Set<int>? suggestPieces]) {
+    // Prioritize downloading Suggest Pieces.
+    if (suggestPieces != null && suggestPieces.isNotEmpty) {
+      for (var i = 0; i < suggestPieces.length; i++) {
+        var p = provider[suggestPieces.elementAt(i)];
+        if (p != null && !p.isCompleted && p.haveAvailableSubPiece()) {
+          return p;
+        }
+      }
+    }
+    // Check if the current downloading piece can be used by this peer.
+    var availablePiece = <int>[];
+
+    var candidatePieces = remoteHavePieces;
+    for (var i = 0; i < provider.downloadingPieces.length; i++) {
+      var p = provider.downloadingPieces.elementAt(i);
+      if (p.containsAvailablePeer(peer) && p.haveAvailableSubPiece()) {
+        availablePiece.add(p.index);
+      }
+    }
+
+    // If it is possible to download a piece that is currently being downloaded,
+    // prioritize downloading that piece (following the principle of multiple
+    // peers downloading the same piece to complete it as soon as possible).
+    if (availablePiece.isNotEmpty) {
+      candidatePieces = availablePiece;
+    }
     // random = true;
     var maxList = <Piece>[];
     Piece? a;
     int? startIndex;
-    for (var i = 0; i < piecesIndexList.length; i++) {
-      var p = provider[piecesIndexList[i]];
+    for (var i = 0; i < candidatePieces.length; i++) {
+      var p = provider[candidatePieces[i]];
       if (p != null &&
+          !p.isCompleted &&
           p.haveAvailableSubPiece() &&
-          p.containsAvailablePeer(remotePeerId)) {
+          p.containsAvailablePeer(peer)) {
         a = p;
         startIndex = i;
         break;
@@ -32,11 +60,11 @@ class BasePieceSelector implements PieceSelector {
     }
     if (startIndex == null) return null;
     maxList.add(a!);
-    for (var i = startIndex; i < piecesIndexList.length; i++) {
-      var p = provider[piecesIndexList[i]];
+    for (var i = startIndex; i < candidatePieces.length; i++) {
+      var p = provider[candidatePieces[i]];
       if (p == null ||
           !p.haveAvailableSubPiece() ||
-          !p.containsAvailablePeer(remotePeerId)) {
+          !p.containsAvailablePeer(peer)) {
         continue;
       }
       // Select rare pieces

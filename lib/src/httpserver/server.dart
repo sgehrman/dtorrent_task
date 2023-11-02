@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
-import 'package:dtorrent_task/src/stream/torrent_stream.dart';
+import 'package:collection/collection.dart';
+import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:mime/mime.dart';
 
 import 'package:dtorrent_task/dtorrent_task.dart';
@@ -41,19 +44,98 @@ class StreamingServer {
   DownloadFileManager _fileManager;
   HttpServer? _server;
   TorrentStream _torrentStream;
+  StreamSubscription<HttpRequest>? _streamSubscription;
+  InternetAddress address = InternetAddress.anyIPv4;
+  int port;
 
   StreamingServer(
     this._fileManager,
-    this._torrentStream,
-  );
+    this._torrentStream, {
+    InternetAddress? address,
+    this.port = 9090,
+  }) : address = address ?? InternetAddress.anyIPv4;
 
   int getPiece(int position) {
     var pieceIndex = position ~/ _fileManager.metainfo.pieceLength;
     return pieceIndex;
   }
 
+  String toPlaylistEntry(int i, TorrentFile file) {
+    return '#EXTINF:-1,${file.path}\nhttp://${address.host}:$port/$i';
+  }
+
+  Map<String, dynamic> toJsonEntry(int index, TorrentFile file) {
+    return {
+      'name': file.name,
+      'url': 'http://${address.host}:$port/$index',
+      'length': file.length
+    };
+  }
+
+  String toPlaylist(List<TorrentFile> files) {
+    return '#EXTM3U\n${files.mapIndexed(toPlaylistEntry).join('\n')}';
+  }
+
+  Map<String, dynamic> toJson(List<TorrentFile> files) {
+    return {
+      'totalLength': _fileManager.metainfo.length,
+      'downloaded': _fileManager.downloaded,
+      // 'uploaded':_fileManager.uploaded,
+      'downloadSpeed': _torrentStream.averageDownloadSpeed,
+      'uploadSpeed': _torrentStream.averageUploadSpeed,
+      'totalPeers': _torrentStream.allPeersNumber,
+      // 'activePeers': _torrentStream.activePeersNumber,
+      'files': files.mapIndexed(toJsonEntry).toList()
+    };
+  }
+
   Future<void> requestProcessor(HttpRequest request) async {
-    var file = await _fileManager.metainfo.files
+    // Allow CORS requests to specify arbitrary headers, e.g. 'Range',
+    // by responding to the OPTIONS preflight request with the specified
+    // origin and requested headers.
+    if (request.method == 'OPTIONS' &&
+        request.headers['access-control-request-headers'] != null) {
+      if (request.headers['origin'] != null &&
+          request.headers['origin']!.isNotEmpty) {
+        request.response.headers
+            .add('Access-Control-Allow-Origin', request.headers['origin']![0]);
+      }
+      request.response.headers
+          .add('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+      if (request.response.headers['access-control-request-headers'] != null &&
+          request
+              .response.headers['access-control-request-headers']!.isNotEmpty) {
+        request.response.headers.add('Access-Control-Allow-Headers',
+            request.response.headers['access-control-request-headers']![0]);
+      }
+      request.response.headers.add('Access-Control-Max-Age', '1728000');
+
+      request.response.close();
+      return;
+    }
+    if (request.uri.path == "/.m3u") {
+      var buffer = toPlaylist(_fileManager.metainfo.files).codeUnits;
+
+      request.response.headers.contentType =
+          ContentType.parse('application/x-mpegurl; charset=utf-8');
+      request.response.contentLength = buffer.length;
+      request.response.add(buffer);
+      await request.response.close();
+      return;
+    }
+    if (request.uri.path == "/.json") {
+      JsonEncoder encoder = JsonEncoder.withIndent('  ');
+      var buffer =
+          encoder.convert(toJson(_fileManager.metainfo.files)).codeUnits;
+
+      request.response.headers.contentType =
+          ContentType.parse('application/json; charset=utf-8');
+      request.response.contentLength = buffer.length;
+      request.response.add(buffer);
+      await request.response.close();
+      return;
+    }
+    var file = _fileManager.metainfo.files
         .firstWhere((element) => element.name.contains('mp4'));
     var range = request.headers['range'];
     RangeParser? ranges;
@@ -74,7 +156,7 @@ class StreamingServer {
 
     Stream<List<int>>? bytes;
     if (range == null) {
-      request.response.headers.contentLength = file.length;
+      // request.response.headers.contentLength = file.length;
       if (request.method == 'HEAD') return request.response.close();
       bytes = _torrentStream.createStream(
           filePosition: 0, endPosition: file.length, fileName: file.name);
@@ -83,7 +165,7 @@ class StreamingServer {
         ranges.ranges[0].start != null) {
       request.response.statusCode = 206;
       request.response.headers.contentLength =
-          ranges.ranges[0].end! - ranges.ranges[0].start!;
+          ranges.ranges[0].end! - ranges.ranges[0].start! + 1;
       request.response.headers.add('Content-Range',
           'bytes ${ranges.ranges[0].start!}-${ranges.ranges[0].end}/${file.length}');
       if (request.method == 'HEAD') return request.response.close();
@@ -98,12 +180,14 @@ class StreamingServer {
     await request.response.close();
   }
 
-  Future<void> start() async {
-    _server = await HttpServer.bind(InternetAddress.anyIPv4, 9090);
-    _server?.listen(requestProcessor);
+  Future<StreamingServerStarted> start() async {
+    _server = await HttpServer.bind(address, port);
+    _streamSubscription = _server?.listen(requestProcessor);
+    return StreamingServerStarted(port: port, internetAddress: address);
   }
 
   void stop() {
     _server?.close();
+    _streamSubscription?.cancel();
   }
 }

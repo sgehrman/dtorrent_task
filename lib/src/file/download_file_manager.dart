@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/peer_base.dart';
 
+import '../piece/piece.dart';
 import 'download_file.dart';
 import 'state_file.dart';
 
@@ -17,21 +19,31 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
   Set<DownloadFile> get files => _files;
 
-  List<List<DownloadFile>?>? _piece2fileMap;
-  List<List<DownloadFile>?>? get piece2fileMap => _piece2fileMap;
+  final Set<Piece> _pieces;
 
-  final Map<String, List<int>?> _file2pieceMap = {};
+  Map<Piece, List<DownloadFile>> get piece2fileMap {
+    Map<Piece, List<DownloadFile>> map = {};
+    for (var file in _files) {
+      for (var piece in file.pieces) {
+        map[piece] ??= [];
+        map[piece]!.add(file);
+      }
+    }
+    return map;
+  }
+
+  MapEntry<Piece, List<DownloadFile>>? getPieceFiles(int pieceIndex) =>
+      piece2fileMap.entries
+          .firstWhereOrNull((element) => element.key.index == pieceIndex);
 
   final StateFile _stateFile;
 
   /// TODO: File read caching
-  DownloadFileManager(this.metainfo, this._stateFile) {
-    _piece2fileMap = List.filled(_stateFile.bitfield.piecesNum, null);
-  }
+  DownloadFileManager(this.metainfo, this._stateFile, this._pieces);
 
-  static Future<DownloadFileManager> createFileManager(
-      Torrent metainfo, String localDirectory, StateFile stateFile) {
-    var manager = DownloadFileManager(metainfo, stateFile);
+  static Future<DownloadFileManager> createFileManager(Torrent metainfo,
+      String localDirectory, StateFile stateFile, Set<Piece> pieces) {
+    var manager = DownloadFileManager(metainfo, stateFile, pieces);
     // manager._totalDownloaded = stateFile.downloaded;
     return manager._init(localDirectory);
   }
@@ -80,20 +92,16 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   Future<bool> flushFiles(Set<int> pieceIndices) async {
     var d = _stateFile.downloaded;
     var flushed = <String>{};
-    for (var i = 0; i < pieceIndices.length; i++) {
-      var pieceIndex = pieceIndices.elementAt(i);
-      var fs = _piece2fileMap?[pieceIndex];
-      if (fs == null || fs.isEmpty) continue;
-      for (var i = 0; i < fs.length; i++) {
-        var file = fs[i];
-        var pieces = _file2pieceMap[file.filePath];
-        if (pieces == null) continue;
-        pieces.remove(pieceIndex);
+    for (var pieceIndex in pieceIndices) {
+      var piece2files = getPieceFiles(pieceIndex);
+      if (piece2files == null || piece2files.value.isEmpty) continue;
+      piece2files.key.flushed = true;
+      for (var file in piece2files.value) {
         if (flushed.add(file.filePath)) {
           await file.requestFlush();
         }
-        if (pieces.isEmpty && _file2pieceMap[file.filePath] != null) {
-          _file2pieceMap[file.filePath] = null;
+        if (file.completed) {
+          //TODO: is this check enough ?
           events.emit(DownloadManagerFileCompleted(file.filePath));
         }
       }
@@ -108,39 +116,29 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   void _initFileMap(String directory) {
     for (var i = 0; i < metainfo.files.length; i++) {
       var file = metainfo.files[i];
+      var fileStart = file.offset;
+      var fileEnd = file.offset + file.length;
+      var startPiece = fileStart ~/ metainfo.pieceLength;
+      var endPiece = fileEnd ~/ metainfo.pieceLength;
+      if (fileEnd.remainder(metainfo.pieceLength) == 0) endPiece--;
+      var pieces = _pieces
+          .where((element) =>
+              element.index >= startPiece && element.index <= endPiece)
+          .toSet();
       var df = DownloadFile(
-          directory + file.path, file.offset, file.length, file.name);
+          directory + file.path, file.offset, file.length, file.name, pieces);
       _files.add(df);
-      var fs = df.start;
-      var fe = df.end;
-      var startPiece = fs ~/ metainfo.pieceLength;
-      var endPiece = fe ~/ metainfo.pieceLength;
-      var pieces = _file2pieceMap[df.filePath];
-      if (pieces == null) {
-        pieces = <int>[];
-        _file2pieceMap[df.filePath] = pieces;
-      }
-      if (fe.remainder(metainfo.pieceLength) == 0) endPiece--;
-      for (var pieceIndex = startPiece; pieceIndex <= endPiece; pieceIndex++) {
-        var l = _piece2fileMap?[pieceIndex];
-        if (l == null) {
-          l = <DownloadFile>[];
-          _piece2fileMap?[pieceIndex] = l;
-          if (localHave(pieceIndex)) pieces.add(pieceIndex);
-        }
-        l.add(df);
-      }
     }
   }
 
   void readFile(int pieceIndex, int begin, int length) {
-    var tempFiles = _piece2fileMap?[pieceIndex];
+    var tempFiles = getPieceFiles(pieceIndex);
     var ps = pieceIndex * metainfo.pieceLength + begin;
     var pe = ps + length;
-    if (tempFiles == null || tempFiles.isEmpty) return;
+    if (tempFiles == null || tempFiles.value.isEmpty) return;
     var futures = <Future>[];
-    for (var i = 0; i < tempFiles.length; i++) {
-      var tempFile = tempFiles[i];
+    for (var i = 0; i < tempFiles.value.length; i++) {
+      var tempFile = tempFiles.value[i];
       var re = _mapDownloadFilePosition(ps, pe, length, tempFile);
       if (re == null) continue;
       var substart = re['begin'];
@@ -162,14 +160,14 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   /// The Sub Piece is from the Piece corresponding to [pieceIndex], and the content is [block] starting from [begin].
   /// This class does not validate if the written Sub Piece is a duplicate; it simply overwrites the previous content.
   void writeFile(int pieceIndex, int begin, List<int> block) {
-    var tempFiles = _piece2fileMap?[pieceIndex];
+    var tempFiles = getPieceFiles(pieceIndex);
     var ps = pieceIndex * metainfo.pieceLength + begin;
     var blockSize = block.length;
     var pe = ps + blockSize;
-    if (tempFiles == null || tempFiles.isEmpty) return;
+    if (tempFiles == null || tempFiles.value.isEmpty) return;
     var futures = <Future<bool>>[];
-    for (var i = 0; i < tempFiles.length; i++) {
-      var tempFile = tempFiles[i];
+    for (var i = 0; i < tempFiles.value.length; i++) {
+      var tempFile = tempFiles.value[i];
       var re = _mapDownloadFilePosition(ps, pe, blockSize, tempFile);
       if (re == null) continue;
       var substart = re['begin'];
@@ -219,12 +217,6 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       var file = _files.elementAt(i);
       await file.close();
     }
-    _clean();
-  }
-
-  void _clean() {
-    _file2pieceMap.clear();
-    _piece2fileMap = null;
   }
 
   Future delete() async {
@@ -233,6 +225,5 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       var file = _files.elementAt(i);
       await file.delete();
     }
-    _clean();
   }
 }

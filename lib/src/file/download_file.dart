@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
+import 'package:dtorrent_task/src/piece/piece_base.dart';
+
 const READ = 'read';
 const FLUSH = 'flush';
 const WRITE = 'write';
@@ -14,6 +17,10 @@ class DownloadFile {
 
   final int length;
 
+  final Set<Piece> pieces;
+
+  bool get completed => pieces.none((element) => !element.flushed);
+
   File? _file;
 
   RandomAccessFile? _writeAccess;
@@ -24,7 +31,8 @@ class DownloadFile {
 
   StreamSubscription? _streamSubscription;
 
-  DownloadFile(this.filePath, this.start, this.length, this.originalFileName);
+  DownloadFile(this.filePath, this.start, this.length, this.originalFileName,
+      this.pieces);
 
   int get end => start + length;
 
