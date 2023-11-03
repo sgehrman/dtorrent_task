@@ -13,10 +13,10 @@ class PieceManager
     implements PieceProvider {
   bool _isFirst = true;
 
-  final Set<Piece> _pieces = {};
+  final List<Piece> _pieces = [];
 
   @override
-  Set<Piece> get pieces => _pieces;
+  List<Piece> get pieces => _pieces;
 
   // final Set<int> _completedPieces = <int>{};
 

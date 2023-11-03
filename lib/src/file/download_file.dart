@@ -17,7 +17,7 @@ class DownloadFile {
 
   final int length;
 
-  final Set<Piece> pieces;
+  final List<Piece> pieces;
 
   bool get completed => pieces.none((element) => !element.flushed);
 

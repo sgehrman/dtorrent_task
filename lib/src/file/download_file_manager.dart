@@ -15,11 +15,11 @@ import 'state_file.dart';
 class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   final Torrent metainfo;
 
-  final Set<DownloadFile> _files = {};
+  final List<DownloadFile> _files = [];
 
-  Set<DownloadFile> get files => _files;
+  List<DownloadFile> get files => _files;
 
-  final Set<Piece> _pieces;
+  final List<Piece> _pieces;
 
   Map<Piece, List<DownloadFile>> get piece2fileMap {
     Map<Piece, List<DownloadFile>> map = {};
@@ -42,7 +42,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   DownloadFileManager(this.metainfo, this._stateFile, this._pieces);
 
   static Future<DownloadFileManager> createFileManager(Torrent metainfo,
-      String localDirectory, StateFile stateFile, Set<Piece> pieces) {
+      String localDirectory, StateFile stateFile, List<Piece> pieces) {
     var manager = DownloadFileManager(metainfo, stateFile, pieces);
     // manager._totalDownloaded = stateFile.downloaded;
     return manager._init(localDirectory);
@@ -124,7 +124,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       var pieces = _pieces
           .where((element) =>
               element.index >= startPiece && element.index <= endPiece)
-          .toSet();
+          .toList();
       var df = DownloadFile(
           directory + file.path, file.offset, file.length, file.name, pieces);
       _files.add(df);

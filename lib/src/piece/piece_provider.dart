@@ -7,6 +7,6 @@ abstract class PieceProvider {
 
   int get length;
   Iterable<Piece> get downloadingPieces;
-  final Set<Piece> _pieces = {};
-  Set<Piece> get pieces => _pieces;
+  final List<Piece> _pieces = [];
+  List<Piece> get pieces => _pieces;
 }
