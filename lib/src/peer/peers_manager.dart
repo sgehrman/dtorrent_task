@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
@@ -296,6 +297,24 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   void _processPieceWriteComplete(PieceCompleted event) async {
+    Piece? piece = _pieceManager[event.pieceIndex];
+    if (piece == null) return;
+    var block = await _fileManager.readFile(piece.index, 0, piece.byteLength);
+    if (block == null) return;
+    var digest = sha1.convert(block);
+    if (digest.toString() != piece.hashString) {
+      log('Piece ${piece.index} is rejected', name: runtimeType.toString());
+      for (var i = 0; i < piece.downloadedSubPiecesCount; i++) {
+        piece.pushSubPieceBack(i);
+      }
+      for (var peer in piece.availablePeers) {
+        requestPieces(peer, piece.index);
+      }
+
+      return;
+    } else {
+      log('Piece ${piece.index} is accepted', name: runtimeType.toString());
+    }
     if (_fileManager.localHave(event.pieceIndex)) return;
     await _fileManager.updateBitfield(event.pieceIndex);
     for (var peer in _activePeers) {

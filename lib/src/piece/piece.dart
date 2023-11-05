@@ -162,6 +162,14 @@ class Piece {
     return true;
   }
 
+  bool pushSubPieceBack(int index) {
+    if (subPieceQueue.contains(index)) return false;
+    _writingSubPieces.remove(index);
+    _downloadedSubPieces.remove(index);
+    subPieceQueue.addLast(index);
+    return true;
+  }
+
   bool _disposed = false;
 
   bool get isDisposed => _disposed;

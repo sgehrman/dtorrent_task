@@ -131,12 +131,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     }
   }
 
-  void readFile(int pieceIndex, int begin, int length) {
+  Future<List<int>?> readFile(int pieceIndex, int begin, int length) async {
     var tempFiles = getPieceFiles(pieceIndex);
     var ps = pieceIndex * metainfo.pieceLength + begin;
     var pe = ps + length;
-    if (tempFiles == null || tempFiles.value.isEmpty) return;
-    var futures = <Future>[];
+    if (tempFiles == null || tempFiles.value.isEmpty) return null;
+    var futures = <Future<List<int>>>[];
     for (var i = 0; i < tempFiles.value.length; i++) {
       var tempFile = tempFiles.value[i];
       var re = _mapDownloadFilePosition(ps, pe, length, tempFile);
@@ -146,11 +146,14 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       var subend = re['end'];
       futures.add(tempFile.requestRead(position, subend - substart));
     }
-    Stream.fromFutures(futures).fold<List<int>>(<int>[], (previous, element) {
-      if (element != null && element is List<int>) previous.addAll(element);
+    var block = await Stream.fromFutures(futures).fold<List<int>>(<int>[],
+        (previous, element) {
+      previous.addAll(element);
       return previous;
-    }).then((re) => events.emit(SubPieceReadCompleted(pieceIndex, begin, re)));
-    return;
+    });
+    events.emit(SubPieceReadCompleted(pieceIndex, begin, block));
+
+    return block;
   }
 
   ///
