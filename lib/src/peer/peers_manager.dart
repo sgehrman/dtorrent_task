@@ -304,9 +304,10 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     var digest = sha1.convert(block);
     if (digest.toString() != piece.hashString) {
       log('Piece ${piece.index} is rejected', name: runtimeType.toString());
-      for (var i = 0; i < piece.downloadedSubPiecesCount; i++) {
-        piece.pushSubPieceBack(i);
+      for (var subPiece in piece.downloadedSubPieces) {
+        piece.pushSubPieceBack(subPiece);
       }
+
       for (var peer in piece.availablePeers) {
         requestPieces(peer, piece.index);
       }

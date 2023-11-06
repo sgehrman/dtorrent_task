@@ -16,6 +16,7 @@ class Piece {
   late Queue<int> _subPiecesQueue;
 
   final Set<int> _downloadedSubPieces = <int>{};
+  Set<int> get downloadedSubPieces => _downloadedSubPieces;
 
   final Set<int> _writingSubPieces = <int>{};
 
