@@ -79,7 +79,7 @@ class PieceManager
   /// - Notify the listeners.
   void _processCompletePiece(int index) {
     try {
-      events.emit(PieceCompleted(index));
+      events.emit(PieceWriteCompleted(index));
     } catch (e) {}
   }
 

@@ -94,7 +94,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       ?..on<SubPieceWriteCompleted>(_processSubPieceWriteComplete)
       ..on<SubPieceReadCompleted>(readSubPieceComplete);
     piecesManagerListener = _pieceManager.createListener();
-    piecesManagerListener?.on<PieceCompleted>(_processPieceWriteComplete);
+    piecesManagerListener?.on<PieceWriteCompleted>(_processPieceWriteComplete);
     _init();
     // Start pex interval
     startPEX();
@@ -296,7 +296,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
         event.pieceIndex, event.begin, event.length);
   }
 
-  void _processPieceWriteComplete(PieceCompleted event) async {
+  void _processPieceWriteComplete(PieceWriteCompleted event) async {
     Piece? piece = _pieceManager[event.pieceIndex];
     if (piece == null) return;
     var block = await _fileManager.readFile(piece.index, 0, piece.byteLength);
@@ -307,7 +307,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       for (var subPiece in {...piece.downloadedSubPieces}) {
         piece.pushSubPieceBack(subPiece);
       }
-
+      // TODO: still need optimizing for last pieces
       for (var peer in piece.availablePeers) {
         requestPieces(peer, piece.index);
       }
