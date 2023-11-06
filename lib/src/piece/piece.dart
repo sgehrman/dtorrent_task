@@ -9,6 +9,8 @@ class Piece {
   final int byteLength;
 
   final int index;
+  final int startByte;
+  int get endByte => startByte + byteLength;
 
   final Set<Peer> _availablePeers = <Peer>{};
   Set<Peer> get availablePeers => _availablePeers;
@@ -20,21 +22,24 @@ class Piece {
 
   final Set<int> _writingSubPieces = <int>{};
 
-  int _subPiecesCount = 0;
+  final int _subPiecesCount;
+
+  int get subPiecesCount => _subPiecesCount;
+  // Last piece may have a different length
+  final int _subPieceSize;
+  int get subPieceSize => _subPieceSize;
 
   bool flushed = false;
 
-  Piece(this.hashString, this.index, this.byteLength,
-      {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false}) {
+  Piece(this.hashString, this.index, this.byteLength, this.startByte,
+      {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false})
+      : _subPieceSize = requestLength,
+        _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength {
     if (requestLength <= 0) {
       throw Exception('Request length should bigger than zero');
     }
     if (requestLength > DEFAULT_REQUEST_LENGTH) {
       throw Exception('Request length should smaller than 16kb');
-    }
-    _subPiecesCount = byteLength ~/ requestLength;
-    if (_subPiecesCount * requestLength != byteLength) {
-      _subPiecesCount++;
     }
     _subPiecesQueue =
         Queue.from(List.generate(_subPiecesCount, (index) => index));
@@ -56,8 +61,6 @@ class Piece {
   }
 
   Queue<int> get subPieceQueue => _subPiecesQueue;
-
-  int get subPiecesCount => _subPiecesCount;
 
   double get completed {
     if (subPiecesCount == 0) return 0;

@@ -36,6 +36,7 @@ class PieceManager
   }
 
   void initPieces(Torrent metaInfo, Bitfield bitfield) {
+    var startbyte = 0;
     for (var i = 0; i < metaInfo.pieces.length; i++) {
       var byteLength = metaInfo.pieceLength;
       if (i == metaInfo.pieces.length - 1) {
@@ -43,12 +44,14 @@ class PieceManager
       }
 
       if (bitfield.getBit(i)) {
-        var piece = Piece(metaInfo.pieces[i], i, byteLength, isComplete: true);
+        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
+            isComplete: true);
         _pieces.add(piece);
       } else {
-        var piece = Piece(metaInfo.pieces[i], i, byteLength);
+        var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte);
         _pieces.add(piece);
       }
+      startbyte = startbyte + byteLength;
     }
   }
 
