@@ -146,10 +146,10 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       var subend = re['end'];
       futures.add(tempFile.requestRead(position, subend - substart));
     }
-    var block = await Stream.fromFutures(futures).fold<List<int>>(<int>[],
-        (previous, element) {
-      previous.addAll(element);
-      return previous;
+    var blocks = await Future.wait(futures);
+    var block = blocks.fold<List<int>>(<int>[], (previousValue, element) {
+      previousValue.addAll(element);
+      return previousValue;
     });
     events.emit(SubPieceReadCompleted(pieceIndex, begin, block));
 
