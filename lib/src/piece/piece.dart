@@ -9,9 +9,9 @@ class Piece {
   final int byteLength;
 
   final int index;
-  // the offset of the piece from the start of the torrent block
+// the offset of the piece from the start of the torrent block
   final int offset;
-  // the offseted end position relative to the torrent block
+// the offseted end position relative to the torrent block
   int get end => offset + byteLength;
 
   final Set<Peer> _availablePeers = <Peer>{};
@@ -30,6 +30,9 @@ class Piece {
   // Last piece may have a different length
   final int _subPieceSize;
   int get subPieceSize => _subPieceSize;
+
+  late final int _lastSubPieceSize =
+      byteLength - (_subPieceSize * (_subPiecesCount - 1));
 
   bool flushed = false;
 
@@ -51,6 +54,47 @@ class Piece {
         subPieceWriteComplete(subPiece * requestLength);
       }
     }
+  }
+
+  int calculateLastDownloadedByte(int start) {
+    // TODO: Does this work if the requested start is inside the lastpiece?
+    // TODO: Simplify and refactor
+
+    var subPieces = {
+      ...subPieceQueue,
+      ..._writingSubPieces,
+      ..._downloadedSubPieces
+    }.toList();
+    subPieces.sort();
+
+    var startSubpiece = ((start - offset - 1) ~/ _subPieceSize);
+
+    var lastByte = start;
+    var firstAdded = false;
+    for (var subPiece in subPieces.skip(startSubpiece)) {
+      if (_downloadedSubPieces.contains(subPiece)) {
+        if (subPiece == subPiecesCount - 1) {
+          // last piece may have different size
+
+          if (firstAdded) {
+            lastByte = (offset + (subPiece + 1) * _lastSubPieceSize);
+          } else {
+            lastByte += _lastSubPieceSize;
+          }
+        } else {
+          if (firstAdded) {
+            lastByte = (offset + (subPiece + 1) * _subPieceSize);
+          } else {
+            lastByte += _subPieceSize;
+          }
+        }
+
+        firstAdded = true;
+      } else {
+        break;
+      }
+    }
+    return lastByte;
   }
 
   bool get isDownloading {

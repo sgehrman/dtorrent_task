@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
@@ -43,6 +42,8 @@ class TorrentStream
 
   PieceManager? _pieceManager;
   PieceManager? get pieceManager => _pieceManager;
+
+  late final SequentialPieceSelector pieceSelector = SequentialPieceSelector();
 
   DownloadFileManager? _fileManager;
 
@@ -117,12 +118,12 @@ class TorrentStream
     _tracker ??= TorrentAnnounceTracker(this);
     _stateFile ??= await StateFile.getStateFile(savePath, model);
     _pieceManager ??= PieceManager.createPieceManager(
-        SequentialPieceSelector(), model, _stateFile!.bitfield);
+        pieceSelector, model, _stateFile!.bitfield);
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces);
     _peersManager ??= PeersManager(
         _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
-    _streamingServer = StreamingServer(_fileManager!, this);
+    _streamingServer ??= StreamingServer(_fileManager!, this);
 
     return _peersManager!;
   }
@@ -229,14 +230,16 @@ class TorrentStream
     // if no end position provided, read all file
     endPosition ??= file.length;
 
-    // endPosition = file.offset + endPosition;
-    var bytePosition = file.offset + filePosition;
+    var offsetStart = file.offset + filePosition;
+    var offsetEnd = file.offset + endPosition;
 
-    var startPieceIndex = bytePosition ~/ _fileManager!.metainfo.pieceLength;
-    var endPieceIndex = endPosition ~/ _fileManager!.metainfo.pieceLength;
-    // _pieceManager?.pieces.forEach((piece) => piece.clearAvailablePeer());
-    var requiredPieces = localFile.pieces.where((piece) =>
-        piece.index > startPieceIndex && piece.index < endPieceIndex);
+    var startPiece = getPiece(localFile.pieces, offsetStart);
+    var endPiece = getPiece(localFile.pieces, offsetEnd);
+    if (startPiece == null || endPiece == null) return null;
+    // TODO: ineffecient
+    final requiredPieces = localFile.pieces.sublist(
+        localFile.pieces.indexOf(startPiece),
+        localFile.pieces.indexOf(endPiece) + 1);
 
     for (var piece in requiredPieces) {
       for (var peer in piece.availablePeers) {
@@ -244,43 +247,10 @@ class TorrentStream
       }
     }
 
-    // find the last completed piece
-    var lastCompletePiece = startPieceIndex;
-    for (;
-        lastCompletePiece < _stateFile!.bitfield.completedPieces.length;
-        lastCompletePiece++) {
-      //reached last piece
-      if (lastCompletePiece + 1 ==
-          _stateFile!.bitfield.completedPieces.length) {
-        break;
-      }
-      if (_stateFile!.bitfield.completedPieces[lastCompletePiece] + 1 !=
-          _stateFile!.bitfield.completedPieces[lastCompletePiece + 1]) break;
-      if (localFile.pieces
-          .none((element) => element.index == lastCompletePiece)) break;
-    }
-    int croppedEndPosition = endPosition;
-    if (lastCompletePiece >= localFile.pieces.last.index) {
-      croppedEndPosition = localFile.length;
-    } else {
-      croppedEndPosition =
-          lastCompletePiece * _fileManager!.metainfo.pieceLength;
-    }
-    if (croppedEndPosition < endPosition) {
-      endPosition = croppedEndPosition;
-    }
+    var stream = localFile.createStream(filePosition, endPosition);
+    if (stream == null) return null;
 
-    var stream = File(localFile.filePath).openRead(filePosition, endPosition);
-    return StreamWithLength(stream: stream, length: endPosition - filePosition);
-    // var future = localFile.requestRead(filePosition, endPosition);
-    // Stream.fromFuture(future);
-
-    // return stream.transform(StreamTransformer.fromHandlers(
-    //   handleData: (data, sink) {
-    //     // _stateFile!.bitfield.getBit();
-    //     sink.add(data);
-    //   },
-    // ));
+    return StreamWithLength(stream: stream.stream, length: stream.length);
   }
 
   @override
@@ -303,16 +273,23 @@ class TorrentStream
     }
   }
 
-  @override
-  Future start() async {
-// Incoming peer:
-
-    _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+  startStreaming() async {
     await _init(_metaInfo, _savePath);
     for (var file in _fileManager!.files) {
       await file.requestFlush();
     }
-    await _streamingServer?.start().then((event) => events.emit(event));
+    if (!_streamingServer!.running) {
+      await _streamingServer?.start().then((event) => events.emit(event));
+    }
+  }
+
+  @override
+  Future start() async {
+    // Incoming peer:
+    state = TaskState.running;
+
+    _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    await startStreaming();
     _serverSocket?.listen(_hookInPeer);
 
     var map = {};

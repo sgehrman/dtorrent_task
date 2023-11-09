@@ -102,7 +102,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         if (flushed.add(file.filePath)) {
           await file.requestFlush();
         }
-        if (file.completed) {
+        if (file.completelyFlushed) {
           //TODO: is this check enough ?
           events.emit(DownloadManagerFileCompleted(file.filePath));
         }

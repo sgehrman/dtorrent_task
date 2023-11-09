@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
+import 'package:dtorrent_task/src/file/utils.dart';
 import 'package:dtorrent_task/src/piece/piece_base.dart';
+import 'package:dtorrent_task/src/stream/stream.dart';
+import 'package:dtorrent_task/src/utils.dart';
 
 const READ = 'read';
 const FLUSH = 'flush';
@@ -14,17 +18,20 @@ class DownloadFile {
 
   final String originalFileName;
 
-  // the offset of the file from the start of the torrent block
+// the offset of the file from the start of the torrent block
   final int offset;
 
   final int length;
 
+  // the offseted end position relative to the torrent block
   int get end => offset + length;
 
-  // the offseted end position relative to the torrent block
+  int downloadedBytes = 0;
   final List<Piece> pieces;
 
-  bool get completed => pieces.none((element) => !element.flushed);
+  bool get completelyFlushed => pieces.none((element) => !element.flushed);
+  bool get completed => downloadedBytes == length;
+  double get downloadProgress => downloadedBytes / length * 100;
 
   File? _file;
 
@@ -34,10 +41,29 @@ class DownloadFile {
 
   StreamController? _streamController;
 
+  late StreamController<List<int>> hlsStreamController = StreamController();
+
+  int streamEndPosition = 0;
+  int streamPosition = 0;
+  int get streamLengthLeft => streamEndPosition - streamPosition;
   StreamSubscription? _streamSubscription;
 
-  DownloadFile(this.filePath, this.offset, this.length, this.originalFileName,
-      this.pieces);
+  DownloadFile(
+    this.filePath,
+    this.offset,
+    this.length,
+    this.originalFileName,
+    this.pieces,
+  ) {
+    for (var piece in pieces) {
+      if (piece.isCompleted) {
+        var blockPosition = blockToDownloadFilePosition(
+            piece.offset, piece.end, piece.byteLength, this);
+        if (blockPosition == null) continue;
+        downloadedBytes += blockPosition.blockEnd - blockPosition.blockStart;
+      }
+    }
+  }
 
   bool _closed = false;
 
@@ -78,6 +104,90 @@ class DownloadFile {
     return completer.future;
   }
 
+  StreamWithLength<List<int>>? createStream(int startByte, int endByte) {
+    // TODO: This algorithm doesn't work well when the moov atom is not in the start of the file
+    // TODO: this currently support only one stream at a time, should it support more? how do we handle required pieces!
+    var offsetStart = offset + startByte; // add the file offset
+    var lengthLeft = endByte - startByte; // the requested length
+    streamEndPosition = endByte; //reset endposition
+    streamPosition = startByte; // reset start position
+    // if the stream was used before, re instantiate it
+    hlsStreamController.close();
+    hlsStreamController = StreamController();
+    var lastDownloadedByte = calculateLastDownloadedByte(offsetStart);
+    if (lastDownloadedByte == null) return null;
+    var fileLastDownloadedByte = lastDownloadedByte - offset;
+    var lengthToRead = math.min(fileLastDownloadedByte, endByte) - startByte;
+    readAndPushBytes(startByte, lengthToRead);
+
+    return StreamWithLength(
+        stream: hlsStreamController.stream, length: lengthLeft);
+  }
+
+  ///
+  ///
+  /// the input should be offseted
+  ///
+  /// the output will be offseted
+  ///
+  int? calculateLastDownloadedByte(int startByte) {
+    var startPiece = getPiece(pieces, startByte);
+    if (startPiece == null) return null;
+    var startPieceIndex = pieces.indexOf(startPiece);
+    var totalLastByte = startByte;
+    for (var piece in pieces.skip(startPieceIndex)) {
+      var lastSubPieceByte = piece
+          .calculateLastDownloadedByte(math.max(piece.offset, totalLastByte));
+      totalLastByte = lastSubPieceByte;
+      if (totalLastByte < piece.end) {
+        break;
+      }
+    }
+    return math.min(totalLastByte, end);
+  }
+
+  pushBytes() {
+    if (hlsStreamController.isClosed) return;
+
+    var lastDownloadedByte =
+        calculateLastDownloadedByte(streamPosition + offset);
+    if (lastDownloadedByte == null) return null;
+    var fileLastDownloadedByte = lastDownloadedByte - offset;
+
+    var lengthToRead =
+        math.min(fileLastDownloadedByte, streamEndPosition) - streamPosition;
+
+    if (lengthToRead > 0) {
+      readAndPushBytes(
+        streamPosition,
+        lengthToRead,
+      );
+    }
+  }
+
+  readAndPushBytes(
+    int start,
+    int lengthToRead,
+  ) async {
+    if (hlsStreamController.isClosed) return;
+    var bytes = await requestRead(start, lengthToRead);
+
+    var timeStamp = DateTime.now();
+    log("[$timeStamp] startByte: $start, lengthToRead:$lengthToRead, downloadedBytes: $downloadedBytes");
+    if (hlsStreamController.isClosed) return;
+    var leftPosition = start + bytes.length;
+    streamPosition = leftPosition;
+
+    hlsStreamController.add(bytes);
+    log("[$timeStamp] lengthLeft: $streamLengthLeft");
+    if (streamLengthLeft < 1) {
+      hlsStreamController.close();
+      streamPosition = 0;
+      streamEndPosition = 0;
+      return;
+    }
+  }
+
   /// Process read and write requests.
   ///
   /// Only one request is processed at a time. The Stream is paused through StreamSubscription
@@ -109,6 +219,9 @@ class DownloadFile {
       _writeAccess = await _writeAccess?.setPosition(position);
       _writeAccess = await _writeAccess?.writeFrom(block, start, end);
       completer.complete(true);
+      // if there is a request pending push bytes to it
+      pushBytes();
+      downloadedBytes += end - start;
     } catch (e) {
       log('Write file error:', error: e, name: runtimeType.toString());
       completer.complete(false);

@@ -43,7 +43,7 @@ class RangeParser {
     for (var range in parseRanges) {
       var tmp = range.split('-');
       var start = int.tryParse(tmp[0]);
-      var end = int.tryParse(tmp[1]) ?? fileLength;
+      var end = int.tryParse(tmp[1]) ?? fileLength - 1;
       var tmpRange = Range(start ?? fileLength - end, end);
       ranges.add(tmpRange);
     }
@@ -64,6 +64,7 @@ class StreamingServer {
   StreamSubscription<HttpRequest>? _streamSubscription;
   InternetAddress address = InternetAddress.anyIPv4;
   int port;
+  bool running = false;
 
   StreamingServer(
     this._fileManager,
@@ -160,6 +161,23 @@ class StreamingServer {
       ranges = RangeParser(range[0], file.length);
     }
 
+    StreamWithLength<List<int>>? bytes;
+    int startPosition = ranges?.ranges.first.start ?? 0;
+    int endPosition =
+        ranges != null ? ranges.ranges.first.end + 1 : file.length;
+    if (startPosition >= file.length) {
+      request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+      request.response.close();
+      return;
+    }
+
+    bytes = _torrentStream.createStream(
+        filePosition: startPosition,
+        endPosition: endPosition,
+        fileName: file.name);
+    if (request.method == 'HEAD') return request.response.close();
+
+    if (bytes == null) return;
     request.response.headers.add('Accept-Ranges', 'bytes');
     request.response.headers.add('Connection', 'keep-alive');
     request.response.headers.add('Keep-Alive', 'timeout=5');
@@ -170,19 +188,6 @@ class StreamingServer {
     if (mime != null) {
       request.response.headers.contentType = ContentType.parse(mime);
     }
-
-    StreamWithLength<List<int>>? bytes;
-    int startPosition = ranges?.ranges.first.start ?? 0;
-    int endPosition =
-        ranges != null ? ranges.ranges.first.end + 1 : file.length;
-
-    bytes = _torrentStream.createStream(
-        filePosition: startPosition,
-        endPosition: endPosition,
-        fileName: file.name);
-    if (request.method == 'HEAD') return request.response.close();
-
-    if (bytes == null) return;
     request.response.headers.contentLength = bytes.length;
     if (ranges != null && ranges.ranges.isNotEmpty) {
       request.response.statusCode = 206;
@@ -190,18 +195,23 @@ class StreamingServer {
           'bytes ${ranges.ranges[0].start}-${ranges.ranges[0].end}/${file.length}');
     }
 
-    // request.response.headers.chunkedTransferEncoding = true;
     await request.response.addStream(bytes.stream);
-    await request.response.close();
+    try {
+      await request.response.close();
+    } catch (e) {
+      print('streamed data did not finish');
+    }
   }
 
   Future<StreamingServerStarted> start() async {
     _server = await HttpServer.bind(address, port);
     _streamSubscription = _server?.listen(requestProcessor);
+    running = true;
     return StreamingServerStarted(port: port, internetAddress: address);
   }
 
   void stop() {
+    running = false;
     _server?.close();
     _streamSubscription?.cancel();
   }
