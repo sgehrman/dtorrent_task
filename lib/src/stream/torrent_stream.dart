@@ -62,8 +62,6 @@ class TorrentStream
 
   final Set<InternetAddress> _comingIp = {};
 
-  bool _paused = false;
-
   EventsListener<TorrentAnnounceEvent>? trackerListener;
   EventsListener<PeersManagerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
@@ -287,19 +285,19 @@ class TorrentStream
 
   @override
   void pause() {
-    if (_paused) return;
-    _paused = true;
+    if (state == TaskState.paused) return;
+    state = TaskState.paused;
     _peersManager?.pause();
     events.emit(TaskPaused());
   }
 
   @override
-  bool get isPaused => _paused;
+  TaskState state = TaskState.stopped;
 
   @override
   void resume() {
-    if (isPaused) {
-      _paused = false;
+    if (state == TaskState.paused) {
+      state = TaskState.running;
       _peersManager?.resume();
       events.emit(TaskResumed());
     }
@@ -307,7 +305,7 @@ class TorrentStream
 
   @override
   Future start() async {
-    // Incoming peer:
+// Incoming peer:
 
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
@@ -355,6 +353,7 @@ class TorrentStream
 
   @override
   Future stop([bool force = false]) async {
+    state = TaskState.stopped;
     await _tracker?.stop(force);
     events.emit(TaskStopped());
   }

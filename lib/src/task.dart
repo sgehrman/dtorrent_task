@@ -25,6 +25,8 @@ import 'utils.dart';
 const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
 
+enum TaskState { running, paused, stopped }
+
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
   factory TorrentTask.newTask(Torrent metaInfo, String savePath) {
     return _TorrentTask(metaInfo, savePath);
@@ -69,7 +71,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Stop this task
   Future stop();
 
-  bool get isPaused;
+  abstract TaskState state;
 
   /// Pause task
   void pause();
@@ -124,8 +126,6 @@ class _TorrentTask
   // ServerUTPSocket? _utpServer;
 
   final Set<InternetAddress> _comingIp = {};
-
-  bool _paused = false;
 
   EventsListener<TorrentAnnounceEvent>? trackerListener;
   EventsListener<PeersManagerEvent>? peersManagerListener;
@@ -275,19 +275,19 @@ class _TorrentTask
 
   @override
   void pause() {
-    if (_paused) return;
-    _paused = true;
+    if (state == TaskState.paused) return;
+    state = TaskState.paused;
     _peersManager?.pause();
     events.emit(TaskPaused());
   }
 
   @override
-  bool get isPaused => _paused;
+  TaskState state = TaskState.stopped;
 
   @override
   void resume() {
-    if (isPaused) {
-      _paused = false;
+    if (state == TaskState.paused) {
+      state = TaskState.running;
       _peersManager?.resume();
       events.emit(TaskResumed());
     }
@@ -295,6 +295,7 @@ class _TorrentTask
 
   @override
   Future start() async {
+    state = TaskState.running;
     // Incoming peer:
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
@@ -339,6 +340,7 @@ class _TorrentTask
       _tracker?.runTrackers(_metaInfo.announces, _metaInfo.infoHashBuffer,
           event: EVENT_STARTED);
     }
+    events.emit(TaskStarted());
     return map;
   }
 
