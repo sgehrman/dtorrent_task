@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
 
@@ -21,6 +22,12 @@ List<int>? hexString2Buffer(String hexStr) {
     re.add(byte);
   }
   return re;
+}
+
+/// byte is byte with offset
+Piece? getPiece(List<Piece> pieces, int byte) {
+  return pieces
+      .firstWhereOrNull((piece) => piece.offset <= byte && piece.end >= byte);
 }
 
 /// pow(2, 14)

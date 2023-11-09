@@ -6,6 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/file/utils.dart';
+import 'package:dtorrent_task/src/utils.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/peer_base.dart';
 
@@ -117,15 +118,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   void _initFileMap(String directory) {
     for (var i = 0; i < metainfo.files.length; i++) {
       var file = metainfo.files[i];
-      var fileStart = file.offset;
-      var fileEnd = file.offset + file.length;
-      var startPiece = fileStart ~/ metainfo.pieceLength;
-      var endPiece = fileEnd ~/ metainfo.pieceLength;
-      if (fileEnd.remainder(metainfo.pieceLength) == 0) endPiece--;
-      var pieces = _pieces
-          .where((element) =>
-              element.index >= startPiece && element.index <= endPiece)
-          .toList();
+
+      var startPiece = getPiece(_pieces, file.offset);
+      var endPiece = getPiece(_pieces, file.end);
+      if (startPiece == null || endPiece == null) return;
+      // TODO: this is ineffecient, find a faster way
+      final pieces = _pieces.sublist(
+          _pieces.indexOf(startPiece), _pieces.indexOf(endPiece) + 1);
       var df = DownloadFile(
           directory + file.path, file.offset, file.length, file.name, pieces);
       _files.add(df);
