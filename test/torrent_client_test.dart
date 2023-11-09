@@ -8,6 +8,14 @@ import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:test/test.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:path/path.dart' as path;
+
+final testDirectory = path.join(
+  Directory.current.path,
+  Directory.current.path.endsWith('test') ? '' : 'test',
+);
+var torrentsPath =
+    path.canonicalize(path.join(testDirectory, '..', '..', '..', 'torrents'));
 
 void main() {
   group('Bitfield test - ', () {
@@ -105,7 +113,7 @@ void main() {
       var totalSize = 163840;
       var remain = Random().nextInt(100);
       totalSize = totalSize + remain;
-      var p = Piece('aaaaaaa', 0, totalSize);
+      var p = Piece('aaaaaaa', 0, totalSize, 0);
       var size = DEFAULT_REQUEST_LENGTH;
       var subIndex = p.popSubPiece();
       subIndex = p.popLastSubPiece();
@@ -118,7 +126,7 @@ void main() {
     });
 
     test('piece length less than 16kb', () {
-      var p = Piece('aaaaaaa', 0, DEFAULT_REQUEST_LENGTH - 100);
+      var p = Piece('aaaaaaa', 0, DEFAULT_REQUEST_LENGTH - 100, 0);
       var l = p.availableSubPieceCount;
       assert(l == 1);
       var sp = p.popSubPiece();
@@ -162,13 +170,12 @@ void main() {
   });
 
   group('StateFile Test - ', () {
-    var directory = 'test';
+    var directory = path.canonicalize(path.join('..', 'tmp'));
     Torrent? torrent;
     setUpAll(() async {
       torrent = await Torrent.parse(
-          '$directory${Platform.pathSeparator}test4.torrent');
-      var f = File(
-          '$directory${Platform.pathSeparator}${torrent!.infoHash}.bt.state');
+          path.join(torrentsPath, 'big-buck-bunny.torrent'));
+      var f = File(path.join(directory, '${torrent!.infoHash}.bt.state'));
       if (await f.exists()) await f.delete();
     });
     test('Write/Read StateFile', () async {
@@ -207,8 +214,7 @@ void main() {
 
       await stateFile.close();
       await stateFile.close(); // What will happen if closed twice?
-      var f = File(
-          '$directory${Platform.pathSeparator}${torrent!.infoHash}.bt.state');
+      var f = File(path.join(directory, '${torrent!.infoHash}.bt.state'));
       var locker = Completer();
       var data = <int>[];
       f.openRead().listen((event) {
@@ -244,8 +250,7 @@ void main() {
 
     test('Delete StateFile', () async {
       var stateFile = await StateFile.getStateFile(directory, torrent!);
-      var t = File(
-          '$directory${Platform.pathSeparator}${torrent!.infoHash}.bt.state');
+      var t = File(path.join(directory, '${torrent!.infoHash}.bt.state'));
       assert(await t.exists());
       await stateFile.delete();
       await stateFile.delete(); //Deleting twice.
@@ -258,7 +263,7 @@ void main() {
       var content = 'DART-TORRENT-CLIENT';
       var buffer = utf8.encode(content);
       var file =
-          DownloadFile('test/test.txt', 0, buffer.length, 'test.txt', {});
+          DownloadFile('test/test.txt', 0, buffer.length, 'test.txt', []);
       assert(await file.requestWrite(0, buffer, 0, buffer.length));
       var bytes = await file.requestRead(0, buffer.length);
       var result = String.fromCharCodes(bytes);

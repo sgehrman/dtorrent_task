@@ -1,17 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/metadata/metadata_downloader.dart';
-import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/peer/peer.dart';
+import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:path/path.dart' as path;
+
+var scriptDir = path.dirname(Platform.script.path);
 
 void main(List<String> args) async {
-  var infohashString = '217bddb5816f2abc56ce1d9fe430711542b109cc';
+  var infohashString = 'dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c';
   var metadata = MetadataDownloader(infohashString);
   // Metadata download contains a DHT , it will search the peer via DHT,
   // but it's too slow , sometimes DHT can not find any peers
@@ -30,7 +35,8 @@ void main(List<String> args) async {
     if (torrentModel != null) {
       print('complete , info : ${torrentModel.name}');
       var startTime = DateTime.now().millisecondsSinceEpoch;
-      var task = TorrentTask.newTask(torrentModel, 'tmp');
+      var task =
+          TorrentTask.newTask(torrentModel, path.join(scriptDir, '..', 'tmp'));
       Timer? timer;
       EventsListener<TaskEvent> listener = task.createListener();
       listener

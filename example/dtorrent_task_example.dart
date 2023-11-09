@@ -4,14 +4,19 @@ import 'dart:io';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:path/path.dart' as path;
+
+var scriptDir = path.dirname(Platform.script.path);
+var torrentsPath =
+    path.canonicalize(path.join(scriptDir, '..', '..', '..', 'torrents'));
 
 void main() async {
   try {
-    var torrentFile = 'example${Platform.pathSeparator}test4.torrent';
-    var savePath = 'tmp${Platform.pathSeparator}test';
+    var torrentFile = path.join(torrentsPath, 'big-buck-bunny.torrent');
+    var savePath = path.join(scriptDir, '..', 'tmp');
     var model = await Torrent.parse(torrentFile);
     // model.announces.clear();
     var task = TorrentTask.newTask(model, savePath);
