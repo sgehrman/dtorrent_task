@@ -332,7 +332,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     }
   }
 
-  Future _flushFiles(final Set<int> indices) async {
+  Future _flushFiles(Set<int> indices) async {
     if (indices.isEmpty) return;
     var piecesSize = _metaInfo.pieceLength;
     var buffer = indices.length * piecesSize;
@@ -498,9 +498,20 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
     var piece = _pieceManager[index];
     if (piece != null) {
+      var blockStart = piece.offset + begin;
+      var blockEnd = blockStart + block.length;
+      if (blockEnd > piece.end) {
+        log('Error:',
+            error: 'Piece overlaps with next piece',
+            name: runtimeType.toString());
+        return;
+      }
       var i = index;
-      Timer.run(() => _fileManager.writeFile(i, begin, block));
-      piece.subPieceDownloadComplete(begin);
+      // TODO: improve
+      if (!piece.isCompleted) {
+        Timer.run(() => _fileManager.writeFile(i, begin, block));
+        piece.subPieceDownloadComplete(begin);
+      }
       if (piece.haveAvailableSubPiece()) index = -1;
     }
     Timer.run(() => requestPieces(peer, index));
