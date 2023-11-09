@@ -48,6 +48,9 @@ class TorrentStream
   DownloadFileManager? _fileManager;
 
   PeersManager? _peersManager;
+
+  @override
+  Iterable<Peer>? get activePeers => _peersManager?.activePeers;
   StreamingServer? _streamingServer;
 
   final Torrent _metaInfo;
@@ -358,7 +361,7 @@ class TorrentStream
     _lsd = null;
     _peerIds.clear();
     _comingIp.clear();
-    _streamingServer!.stop();
+    _streamingServer?.stop();
     return;
   }
 

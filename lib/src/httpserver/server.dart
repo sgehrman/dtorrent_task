@@ -78,20 +78,20 @@ class StreamingServer {
     return pieceIndex;
   }
 
-  String toPlaylistEntry(int i, TorrentFile file) {
-    return '#EXTINF:-1,${file.path}\nhttp://${address.host}:$port/$i';
+  String toPlaylistEntry(TorrentFile file) {
+    return '#EXTINF:-1,${file.path}\nhttp://${address.host}:$port/${file.path}';
   }
 
-  Map<String, dynamic> toJsonEntry(int index, TorrentFile file) {
+  Map<String, dynamic> toJsonEntry(TorrentFile file) {
     return {
       'name': file.name,
-      'url': 'http://${address.host}:$port/$index',
+      'url': 'http://${address.host}:$port/${file.path}',
       'length': file.length
     };
   }
 
-  String toPlaylist(List<TorrentFile> files) {
-    return '#EXTM3U\n${files.mapIndexed(toPlaylistEntry).join('\n')}';
+  String toPlaylist(Iterable<TorrentFile> files) {
+    return '#EXTM3U\n${files.map(toPlaylistEntry).join('\n')}';
   }
 
   Map<String, dynamic> toJson(List<TorrentFile> files) {
@@ -102,8 +102,8 @@ class StreamingServer {
       'downloadSpeed': _torrentStream.averageDownloadSpeed,
       'uploadSpeed': _torrentStream.averageUploadSpeed,
       'totalPeers': _torrentStream.allPeersNumber,
-      // 'activePeers': _torrentStream.activePeersNumber,
-      'files': files.mapIndexed(toJsonEntry).toList()
+      'activePeers': _torrentStream.activePeers?.length ?? 0,
+      'files': files.map(toJsonEntry).toList()
     };
   }
 
@@ -131,8 +131,13 @@ class StreamingServer {
       request.response.close();
       return;
     }
-    if (request.uri.path == "/.m3u") {
-      var buffer = toPlaylist(_fileManager.metainfo.files).codeUnits;
+    if (request.uri.path == "/.m3u" || request.uri.path == "/") {
+      var files = _fileManager.metainfo.files.where((element) =>
+          lookupMimeType(element.name)?.startsWith('video') ??
+          lookupMimeType(element.name)?.startsWith('audio') ??
+          false);
+
+      var buffer = toPlaylist(files).codeUnits;
 
       request.response.headers.contentType =
           ContentType.parse('application/x-mpegurl; charset=utf-8');
@@ -153,8 +158,15 @@ class StreamingServer {
       await request.response.close();
       return;
     }
+    // the client can request a specific file
+    var requestedFilePath = Uri.decodeComponent(request.uri.path);
+    requestedFilePath = requestedFilePath.substring(1);
     var file = _fileManager.metainfo.files
-        .firstWhere((element) => element.name.contains('mp4'));
+        .firstWhereOrNull((element) => element.path == requestedFilePath);
+    // if not, select the first file that
+    file ??= _fileManager.metainfo.files.firstWhereOrNull((element) =>
+        lookupMimeType(element.name)?.startsWith('video') ?? false);
+    if (file == null) return;
     var range = request.headers['range'];
     RangeParser? ranges;
     if (range != null) {

@@ -72,6 +72,7 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   Future stop();
 
   abstract TaskState state;
+  Iterable<Peer>? get activePeers;
 
   /// Pause task
   void pause();
@@ -110,6 +111,9 @@ class _TorrentTask
   DownloadFileManager? _fileManager;
 
   PeersManager? _peersManager;
+
+  @override
+  Iterable<Peer>? get activePeers => _peersManager?.activePeers;
 
   final Torrent _metaInfo;
   @override
