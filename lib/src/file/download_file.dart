@@ -11,12 +11,17 @@ const WRITE = 'write';
 
 class DownloadFile {
   final String filePath;
+
   final String originalFileName;
 
-  final int start;
+  // the offset of the file from the start of the torrent block
+  final int offset;
 
   final int length;
 
+  int get end => offset + length;
+
+  // the offseted end position relative to the torrent block
   final List<Piece> pieces;
 
   bool get completed => pieces.none((element) => !element.flushed);
@@ -31,10 +36,8 @@ class DownloadFile {
 
   StreamSubscription? _streamSubscription;
 
-  DownloadFile(this.filePath, this.start, this.length, this.originalFileName,
+  DownloadFile(this.filePath, this.offset, this.length, this.originalFileName,
       this.pieces);
-
-  int get end => start + length;
 
   bool _closed = false;
 

@@ -192,7 +192,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
   Map? _mapDownloadFilePosition(
       int pieceStart, int pieceEnd, int length, DownloadFile tempFile) {
-    var fs = tempFile.start;
+    var fs = tempFile.offset;
     var fe = fs + tempFile.length;
     if (pieceEnd < fs || pieceStart > fe) return null;
     var position = 0;

@@ -9,8 +9,10 @@ class Piece {
   final int byteLength;
 
   final int index;
-  final int startByte;
-  int get endByte => startByte + byteLength;
+  // the offset of the piece from the start of the torrent block
+  final int offset;
+  // the offseted end position relative to the torrent block
+  int get end => offset + byteLength;
 
   final Set<Peer> _availablePeers = <Peer>{};
   Set<Peer> get availablePeers => _availablePeers;
@@ -31,7 +33,7 @@ class Piece {
 
   bool flushed = false;
 
-  Piece(this.hashString, this.index, this.byteLength, this.startByte,
+  Piece(this.hashString, this.index, this.byteLength, this.offset,
       {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false})
       : _subPieceSize = requestLength,
         _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength {
