@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task/src/file/utils.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/peer_base.dart';
 
@@ -132,25 +133,27 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   }
 
   Future<List<int>?> readFile(int pieceIndex, int begin, int length) async {
+    var piece = _pieces[pieceIndex];
     var tempFiles = getPieceFiles(pieceIndex);
-    var ps = pieceIndex * metainfo.pieceLength + begin;
-    var pe = ps + length;
+    var startByte = piece.offset + begin;
+    var endByte = startByte + length;
     if (tempFiles == null || tempFiles.value.isEmpty) return null;
     var futures = <Future<List<int>>>[];
     for (var i = 0; i < tempFiles.value.length; i++) {
       var tempFile = tempFiles.value[i];
-      var re = _mapDownloadFilePosition(ps, pe, length, tempFile);
+
+      var re =
+          blockToDownloadFilePosition(startByte, endByte, length, tempFile);
       if (re == null) continue;
-      var substart = re['begin'];
-      var position = re['position'];
-      var subend = re['end'];
-      futures.add(tempFile.requestRead(position, subend - substart));
+      futures
+          .add(tempFile.requestRead(re.position, re.blockEnd - re.blockStart));
     }
     var blocks = await Future.wait(futures);
     var block = blocks.fold<List<int>>(<int>[], (previousValue, element) {
       previousValue.addAll(element);
       return previousValue;
     });
+
     events.emit(SubPieceReadCompleted(pieceIndex, begin, block));
 
     return block;
@@ -164,19 +167,21 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   /// This class does not validate if the written Sub Piece is a duplicate; it simply overwrites the previous content.
   void writeFile(int pieceIndex, int begin, List<int> block) {
     var tempFiles = getPieceFiles(pieceIndex);
-    var ps = pieceIndex * metainfo.pieceLength + begin;
+    // TODO: Does this work for last piece?
+    // this is the start position relative to  start of the entire torrent block
+    var startByte = pieceIndex * metainfo.pieceLength + begin;
     var blockSize = block.length;
-    var pe = ps + blockSize;
+    // this is the end position relative to  start of the entire torrent block
+    var endByte = startByte + blockSize;
     if (tempFiles == null || tempFiles.value.isEmpty) return;
     var futures = <Future<bool>>[];
     for (var i = 0; i < tempFiles.value.length; i++) {
       var tempFile = tempFiles.value[i];
-      var re = _mapDownloadFilePosition(ps, pe, blockSize, tempFile);
+      var re =
+          blockToDownloadFilePosition(startByte, endByte, blockSize, tempFile);
       if (re == null) continue;
-      var substart = re['begin'];
-      var position = re['position'];
-      var subend = re['end'];
-      futures.add(tempFile.requestWrite(position, block, substart, subend));
+      futures.add(tempFile.requestWrite(
+          re.position, block, re.blockStart, re.blockEnd));
     }
     Stream.fromFutures(futures).fold<bool>(true, (p, a) {
       return p && a;
@@ -188,29 +193,6 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
     });
     return;
-  }
-
-  Map? _mapDownloadFilePosition(
-      int pieceStart, int pieceEnd, int length, DownloadFile tempFile) {
-    var fs = tempFile.offset;
-    var fe = fs + tempFile.length;
-    if (pieceEnd < fs || pieceStart > fe) return null;
-    var position = 0;
-    var substart = 0;
-    if (fs <= pieceStart) {
-      position = pieceStart - fs;
-      substart = 0;
-    } else {
-      position = 0;
-      substart = fs - pieceStart;
-    }
-    var subend = substart;
-    if (fe >= pieceEnd) {
-      subend = length;
-    } else {
-      subend = fe - pieceStart;
-    }
-    return {'position': position, 'begin': substart, 'end': subend};
   }
 
   Future close() async {
