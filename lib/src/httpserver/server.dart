@@ -161,7 +161,7 @@ class StreamingServer {
       ranges = RangeParser(range[0], file.length);
     }
 
-    StreamWithLength<List<int>>? bytes;
+    Stream<List<int>>? bytes;
     int startPosition = ranges?.ranges.first.start ?? 0;
     int endPosition =
         ranges != null ? ranges.ranges.first.end + 1 : file.length;
@@ -188,15 +188,15 @@ class StreamingServer {
     if (mime != null) {
       request.response.headers.contentType = ContentType.parse(mime);
     }
-    request.response.headers.contentLength = bytes.length;
+    request.response.headers.contentLength = endPosition - startPosition;
     if (ranges != null && ranges.ranges.isNotEmpty) {
       request.response.statusCode = 206;
       request.response.headers.add('Content-Range',
           'bytes ${ranges.ranges[0].start}-${ranges.ranges[0].end}/${file.length}');
     }
-
-    await request.response.addStream(bytes.stream);
     try {
+      await request.response.addStream(bytes);
+
       await request.response.close();
     } catch (e) {
       print('streamed data did not finish');

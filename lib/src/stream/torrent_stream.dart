@@ -17,14 +17,14 @@ import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
-class StreamWithLength<T> {
-  Stream<T> stream;
-  int length;
-  StreamWithLength({
-    required this.stream,
-    required this.length,
-  });
-}
+// class StreamWithLength<T> {
+//   Stream<T> stream;
+//   int length;
+//   StreamWithLength({
+//     required this.stream,
+//     required this.length,
+//   });
+// }
 
 class TorrentStream
     with EventsEmittable<TaskEvent>
@@ -210,7 +210,7 @@ class TorrentStream
         socket: socket);
   }
 
-  StreamWithLength<List<int>>? createStream(
+  Stream<List<int>>? createStream(
       {int filePosition = 0, int? endPosition, String? fileName}) {
     if (_fileManager == null || _peersManager == null) return null;
     TorrentFile? file;
@@ -250,7 +250,7 @@ class TorrentStream
     var stream = localFile.createStream(filePosition, endPosition);
     if (stream == null) return null;
 
-    return StreamWithLength(stream: stream.stream, length: stream.length);
+    return stream;
   }
 
   @override

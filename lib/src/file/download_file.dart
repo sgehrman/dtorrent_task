@@ -104,11 +104,11 @@ class DownloadFile {
     return completer.future;
   }
 
-  StreamWithLength<List<int>>? createStream(int startByte, int endByte) {
+  Stream<List<int>>? createStream(int startByte, int endByte) {
     // TODO: This algorithm doesn't work well when the moov atom is not in the start of the file
     // TODO: this currently support only one stream at a time, should it support more? how do we handle required pieces!
     var offsetStart = offset + startByte; // add the file offset
-    var lengthLeft = endByte - startByte; // the requested length
+    // var lengthLeft = endByte - startByte; // the requested length
     streamEndPosition = endByte; //reset endposition
     streamPosition = startByte; // reset start position
     // if the stream was used before, re instantiate it
@@ -120,8 +120,7 @@ class DownloadFile {
     var lengthToRead = math.min(fileLastDownloadedByte, endByte) - startByte;
     readAndPushBytes(startByte, lengthToRead);
 
-    return StreamWithLength(
-        stream: hlsStreamController.stream, length: lengthLeft);
+    return hlsStreamController.stream;
   }
 
   ///
