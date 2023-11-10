@@ -7,9 +7,10 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
-import 'peer_event_dispatcher.dart';
 import 'congestion_control.dart';
 import 'speed_calculator.dart';
 import 'extended_processor.dart';
@@ -62,19 +63,11 @@ enum PeerType { TCP, UTP }
 /// 30 Seconds
 const DEFAULT_CONNECT_TIMEOUT = 30;
 
-typedef PieceConfigHandle = void Function(
-    Peer peer, int index, int begin, int length);
-typedef NoneParamHandle = void Function(Peer peer);
-
-typedef BoolHandle = void Function(Peer peer, bool value);
-
-typedef SingleIntHandle = void Function(Peer peer, int value);
-
 enum PeerSource { tracker, dht, pex, lsd, incoming, manual, holepunch }
 
 abstract class Peer
     with
-        PeerEventDispatcher,
+        EventsEmittable<PeerEvent>,
         ExtendedProcessor,
         CongestionControl,
         SpeedCalculator {
@@ -256,7 +249,7 @@ abstract class Peer
   set chokeMe(bool c) {
     if (c != _chokeMe) {
       _chokeMe = c;
-      fireChokeChangeEvent(_chokeMe);
+      events.emit(PeerChokeChanged(this, _chokeMe));
     }
   }
 
@@ -269,7 +262,7 @@ abstract class Peer
   set interestedMe(bool i) {
     if (i != _interestedMe) {
       _interestedMe = i;
-      fireInterestedChangeEvent(_interestedMe);
+      events.emit(PeerInterestedChanged(this, _interestedMe));
     }
   }
 
@@ -292,7 +285,7 @@ abstract class Peer
         _log('Error happen: $address', e);
         dispose(e);
       });
-      fireConnectEvent();
+      events.emit(PeerConnected(this));
     } catch (e) {
       if (e is TCPConnectException) return dispose(e);
       return dispose(BadException(e));
@@ -444,7 +437,7 @@ abstract class Peer
   void _processMessage(int? id, Uint8List? message) {
     if (id == null) {
       _log('process keep alive $address');
-      fireKeepAlive();
+      events.emit(PeerKeepAlive());
       return;
     } else {
       switch (id) {
@@ -578,13 +571,13 @@ abstract class Peer
     }
     if (requestIndex != null) {
       _remoteRequestBuffer.removeAt(requestIndex);
-      fireCancel(index, begin, length);
+      events.emit(PeerCancelEvent(index, begin, length));
     }
   }
 
   void _processPortChange(int port) {
     if (address.port == port) return;
-    firePortChange(port);
+    events.emit(PeerPortChanged(port));
   }
 
   void _processHaveAll() {
@@ -601,7 +594,8 @@ abstract class Peer
     for (var i = index; i < _remoteBitfield!.piecesNum; i++) {
       _remoteBitfield?.setBit(i, true);
     }
-    fireRemoteHaveAll();
+
+    events.emit(PeerHaveAll(this));
   }
 
   void _processHaveNone() {
@@ -610,7 +604,7 @@ abstract class Peer
       return;
     }
     _remoteBitfield = Bitfield.createEmptyBitfield(_piecesNum);
-    fireRemoteHaveNone();
+    events.emit(PeerHaveNone(this));
   }
 
   ///
@@ -623,7 +617,9 @@ abstract class Peer
     }
     var view = ByteData.view(message.buffer);
     var index = view.getUint32(0);
-    if (_remoteSuggestPieces.add(index)) fireSuggestPiece(index);
+    if (_remoteSuggestPieces.add(index)) {
+      events.emit(PeerSuggestPiece(this, index));
+    }
   }
 
   void _processRejectRequest(Uint8List message) {
@@ -638,7 +634,7 @@ abstract class Peer
     var length = view.getUint32(8);
     if (removeRequest(index, begin, length) != null) {
       startRequestDataTimeout();
-      fireRejectRequest(index, begin, length);
+      events.emit(PeerRejectEvent(index, begin, length));
     } else {
       // It's possible that the peer was deleted, but the reject message arrived too late.
       // dispose('Never send request ($index,$begin) but receive a rejection');
@@ -654,7 +650,7 @@ abstract class Peer
     var view = ByteData.view(message.buffer);
     var index = view.getUint32(0);
     if (_remoteAllowFastPieces.add(index)) {
-      fireAllowFast(index);
+      events.emit(PeerAllowFast(this, index));
     }
   }
 
@@ -687,7 +683,7 @@ abstract class Peer
     if (chokeRemote) {
       if (_allowFastPieces.contains(index)) {
         _remoteRequestBuffer.add([index, begin, length]);
-        fireRequest(index, begin, length);
+        events.emit(PeerRequestEvent(this, index, begin, length));
         return;
       } else {
         // Choking the remote peer without sending an acknowledgment.
@@ -698,7 +694,7 @@ abstract class Peer
 
     _remoteRequestBuffer.add([index, begin, length]);
     // TODO Implement speed limit here!
-    fireRequest(index, begin, length);
+    events.emit(PeerRequestEvent(this, index, begin, length));
   }
 
   /// Handle the received PIECE messages.
@@ -724,7 +720,7 @@ abstract class Peer
       requests.add(request);
       _log(
           'Received request for Piece ($index, $begin) content, downloaded $downloaded bytes from the current Peer $type $address');
-      firePiece(index, begin, block);
+      events.emit(PeerPieceEvent(this, index, begin, block));
     }
     messages.clear();
     ackRequest(requests);
@@ -739,7 +735,7 @@ abstract class Peer
       indices.add(index);
       updateRemoteBitfield(index, true);
     }
-    fireHave(indices);
+    events.emit(PeerHaveEvent(this, indices));
   }
 
   /// Update the remote peer's bitfield.
@@ -750,7 +746,7 @@ abstract class Peer
   void initRemoteBitfield(Uint8List bitfield) {
     _remoteBitfield = Bitfield(_piecesNum, bitfield);
     // Bitfield.copyFrom(_piecesNum, bitfield, 1);
-    fireBitfield(_remoteBitfield);
+    events.emit(PeerBitfieldEvent(this, _remoteBitfield));
   }
 
   void _processHandShake(List<int> data) {
@@ -761,7 +757,7 @@ abstract class Peer
     var extended = reserved.elementAt(5);
     remoteEnableExtended = ((extended & 0x10) == 0x10);
     _sendExtendedHandshake();
-    fireHandshakeEvent(_remotePeerId, data);
+    events.emit(PeerHandshakeEvent(this, _remotePeerId!, data));
   }
 
   void _sendExtendedHandshake() async {
@@ -771,11 +767,8 @@ abstract class Peer
     }
   }
 
-  String? _parseRemotePeerId(dynamic data) {
-    if (data is List<int>) {
-      return String.fromCharCodes(data.sublist(48, 68));
-    }
-    return null;
+  String _parseRemotePeerId(List<int> data) {
+    return String.fromCharCodes(data.sublist(48, 68));
   }
 
   /// Connect remote peer and return a [Stream] future
@@ -1164,8 +1157,8 @@ abstract class Peer
     _disposed = true;
     _handShaked = false;
     _bitfieldSended = false;
-    fireDisposeEvent(reason);
-    clearEventHandles();
+    events.emit(PeerDisposeEvent(this, reason));
+    events.dispose();
     clearExtendedProcessors();
     clearCC();
     stopSpeedCalculator();

@@ -1,9 +1,10 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
 
-mixin ExtendedProcessor {
+mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
   final Map<int, String> _extendedEventMap = {};
   int _id = 1;
   Map? _rawMap;
@@ -15,19 +16,6 @@ mixin ExtendedProcessor {
       map[value] = key;
     });
     return map;
-  }
-
-  final Set<void Function(dynamic source, String eventName, dynamic data)>
-      _eventHandler = {};
-
-  bool onExtendedEvent(
-      void Function(dynamic source, String eventName, dynamic data) handler) {
-    return _eventHandler.add(handler);
-  }
-
-  bool offExtendedEvent(
-      void Function(dynamic source, String eventName, dynamic data) handler) {
-    return _eventHandler.remove(handler);
   }
 
   void registerExtend(String name) {
@@ -49,14 +37,8 @@ mixin ExtendedProcessor {
     } else {
       var name = _localExtended[id];
       if (name != null) {
-        _fireExtendedEvent(name, message);
+        events.emit(ExtendedEvent(name, message));
       }
-    }
-  }
-
-  void _fireExtendedEvent(String name, dynamic data) {
-    for (var element in _eventHandler) {
-      Timer.run(() => element(this, name, data));
     }
   }
 
@@ -70,12 +52,11 @@ mixin ExtendedProcessor {
       if (value == 0) return;
       _extendedEventMap[value] = key;
     });
-    _fireExtendedEvent('handshake', data);
+    events.emit(ExtendedEvent('handshake', data));
   }
 
   void clearExtendedProcessors() {
     _extendedEventMap.clear();
-    _eventHandler.clear();
     _rawMap?.clear();
     _localExtended.clear();
     _id = 1;

@@ -7,7 +7,10 @@ import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
-import 'package:dtorrent_tracker/dtorrent_tracker.dart';
+import 'package:dtorrent_task/src/metadata/metadata_downloader_events.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
+import 'package:dtorrent_tracker/dtorrent_tracker.dart' hide PeerEvent;
+import 'package:events_emitter2/events_emitter2.dart';
 
 import '../peer/peer.dart';
 import '../peer/holepunch.dart';
@@ -16,10 +19,12 @@ import '../utils.dart';
 import 'metadata_messenger.dart';
 
 class MetadataDownloader
-    with Holepunch, PEX, MetaDataMessenger
+    with
+        Holepunch,
+        PEX,
+        MetaDataMessenger,
+        EventsEmittable<MetaDataDownloadComplete>
     implements AnnounceOptionsProvider {
-  final Set<Function(List<int> data)> _handlers = {};
-
   final List<InternetAddress> IGNORE_IPS = [
     InternetAddress.tryParse('0.0.0.0')!,
     InternetAddress.tryParse('127.0.0.1')!
@@ -48,6 +53,8 @@ class MetadataDownloader
   final Set<Peer> _activePeers = {};
 
   final Set<Peer> _availablePeers = {};
+
+  final Map<Peer, EventsListener<PeerEvent>> _peerListeners = {};
 
   final Set<CompactAddress> _peersAddress = {};
 
@@ -112,14 +119,6 @@ class MetadataDownloader
     await Stream.fromFutures(fs).toList();
   }
 
-  bool onDownloadComplete(Function(List<int> data) h) {
-    return _handlers.add(h);
-  }
-
-  bool offDownloadComplete(Function(List<int> data) h) {
-    return _handlers.remove(h);
-  }
-
   void _processDHTPeer(NewPeerEvent event) {
     if (event.infoHash == String.fromCharCodes(_infoHashBuffer)) {
       addNewPeerAddress(event.address, PeerSource.dht);
@@ -159,10 +158,15 @@ class MetadataDownloader
   void _hookPeer(Peer peer) {
     if (peer.address.address == localExternalIP) return;
     if (_peerExist(peer)) return;
-    peer.onDispose(_processPeerDispose);
-    peer.onHandShake(_processPeerHandshake);
-    peer.onConnect(_peerConnected);
-    peer.onExtendedEvent(_processExtendedMessage);
+    _peerListeners[peer] = peer.createListener();
+    _peerListeners[peer]!
+      ..on<PeerDisposeEvent>(
+          (event) => _processPeerDispose(event.peer, event.reason))
+      ..on<PeerHandshakeEvent>((event) =>
+          _processPeerHandshake(event.peer, event.remotePeerId, event.data))
+      ..on<PeerConnected>((event) => _peerConnected(event.peer))
+      ..on<ExtendedEvent>((event) =>
+          _processExtendedMessage(peer, event.eventName, event.data));
     _registerExtended(peer);
     peer.connect();
   }
@@ -179,22 +183,20 @@ class MetadataDownloader
   }
 
   void unHookPeer(Peer peer) {
-    peer.offDispose(_processPeerDispose);
-    peer.offHandShake(_processPeerHandshake);
-    peer.offConnect(_peerConnected);
-    peer.offExtendedEvent(_processExtendedMessage);
+    peer.events.dispose();
+    _peerListeners.remove(peer);
   }
 
-  void _peerConnected(Peer source) {
+  void _peerConnected(Peer peer) {
     if (!_running) return;
-    var peer = source as Peer;
     _activePeers.add(peer);
     peer.sendHandShake();
   }
 
-  void _processPeerDispose(dynamic source, [dynamic reason]) {
+  void _processPeerDispose(Peer peer, [dynamic reason]) {
+    _peerListeners.remove(peer);
+
     if (!_running) return;
-    var peer = source as Peer;
     _peersAddress.remove(peer.address);
     _incomingAddress.remove(peer.address.address);
     _activePeers.remove(peer);
@@ -298,11 +300,7 @@ class MetadataDownloader
     if (_completedPieces.length >= _metaDataBlockNum!) {
       // At this point, stop and emit the event
       await stop();
-      for (var h in _handlers) {
-        Timer.run(() {
-          h(_infoDatas);
-        });
-      }
+      events.emit(MetaDataDownloadComplete(_infoDatas));
       return;
     }
   }

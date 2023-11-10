@@ -6,6 +6,7 @@ import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/metadata/metadata_downloader.dart';
+import 'package:dtorrent_task/src/metadata/metadata_downloader_events.dart';
 import 'package:dtorrent_task/src/peer/peer.dart';
 import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
@@ -18,6 +19,7 @@ var scriptDir = path.dirname(Platform.script.path);
 void main(List<String> args) async {
   var infohashString = 'dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c';
   var metadata = MetadataDownloader(infohashString);
+  var metadataListener = metadata.createListener();
   // Metadata download contains a DHT , it will search the peer via DHT,
   // but it's too slow , sometimes DHT can not find any peers
   metadata.startDownload();
@@ -26,9 +28,9 @@ void main(List<String> args) async {
   var trackerListener = tracker.createListener();
 
   // When metadata contents download complete , it will send this event and stop itself:
-  metadata.onDownloadComplete((data) async {
+  metadataListener.on<MetaDataDownloadComplete>((event) async {
     tracker.stop(true);
-    var msg = decode(Uint8List.fromList(data));
+    var msg = decode(Uint8List.fromList(event.data));
     Map<String, dynamic> torrent = {};
     torrent['info'] = msg;
     var torrentModel = parseTorrentFileContent(torrent);

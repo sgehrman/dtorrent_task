@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:dtorrent_task/src/peer/peer_events.dart';
+import 'package:events_emitter2/events_emitter2.dart';
+
 import '../utils.dart';
 
 /// 500 ms
@@ -16,7 +19,7 @@ const MAX_CWND_INCREASE_REQUESTS_PER_RTT = 3 * 16384;
 /// LEDBAT Congestion Control
 ///
 /// Note: All time units are in microseconds
-mixin CongestionControl {
+mixin CongestionControl on EventsEmittable<PeerEvent> {
   // The initial value is 10 seconds.
   double _rto = 10000000;
 
@@ -29,21 +32,6 @@ mixin CongestionControl {
   int _allowWindowSize = DEFAULT_REQUEST_LENGTH;
 
   final List<List<dynamic>> _downloadedHistory = <List<dynamic>>[];
-
-  final Set<void Function(dynamic source, List<List<int>> requests)> _handles =
-      <void Function(dynamic source, List<List<int>> requests)>{};
-
-  /// Add `request timeout` event handler
-  bool onRequestTimeout(
-      void Function(dynamic source, List<List<int>> requests) handle) {
-    return _handles.add(handle);
-  }
-
-  /// Remove `request timeout` event handler
-  bool offRequestTimeout(
-      void Function(dynamic source, List<List<int>> requests) handle) {
-    return _handles.remove(handle);
-  }
 
   /// Update the timeout.
   void updateRTO(int rtt) {
@@ -58,13 +46,6 @@ mixin CongestionControl {
     _rto = _srtt! + max(100000, 4 * _rttvar!);
     // If less than 1 second, set it to 1 second.
     _rto = max(_rto, 1000000);
-  }
-
-  void fireRequestTimeoutEvent(List<List<int>> requests) {
-    if (requests.isEmpty) return;
-    for (var f in _handles) {
-      Timer.run(() => f(this, requests));
-    }
   }
 
   List<List<int>> get currentRequestBuffer;
@@ -100,7 +81,7 @@ mixin CongestionControl {
       times++;
       _rto *= 2;
       _allowWindowSize = DEFAULT_REQUEST_LENGTH;
-      fireRequestTimeoutEvent(timeoutR);
+      events.emit(RequestTimeoutEvent(timeoutR));
       startRequestDataTimeout(times);
     });
   }
@@ -140,7 +121,6 @@ mixin CongestionControl {
 
   void clearCC() {
     _timeout?.cancel();
-    _handles.clear();
     _downloadedHistory.clear();
   }
 }

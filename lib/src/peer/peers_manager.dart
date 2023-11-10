@@ -7,11 +7,11 @@ import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 
-import 'bitfield.dart';
 import 'peer.dart';
 import '../file/download_file_manager.dart';
 import '../piece/piece_manager.dart';
@@ -41,6 +41,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   bool get isDisposed => _disposed;
 
   final Set<Peer> _activePeers = {};
+
+  final Map<Peer, EventsListener<PeerEvent>> _peerListeners = {};
 
   final Set<CompactAddress> _peersAddress = {};
 
@@ -187,22 +189,26 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   void _hookPeer(Peer peer) {
     if (peer.address.address == localExternalIP) return;
     if (_peerExist(peer)) return;
-    peer.onDispose(_processPeerDispose);
-    peer.onBitfield(_processBitfieldUpdate);
-    peer.onHaveAll(_processHaveAll);
-    peer.onHaveNone(_processHaveNone);
-    peer.onHandShake(_processPeerHandshake);
-    peer.onChokeChange(_processChokeChange);
-    peer.onInterestedChange(_processInterestedChange);
-    peer.onConnect(_peerConnected);
-    peer.onHave(_processHaveUpdate);
-    peer.onPiece(_processReceivePiece);
-    peer.onRequest(_processRemoteRequest);
-    peer.onRequestTimeout(_processRequestTimeout);
-    peer.onSuggestPiece(_processSuggestPiece);
-    peer.onRejectRequest(_processRejectRequest);
-    peer.onAllowFast(_processAllowFast);
-    peer.onExtendedEvent(_processExtendedMessage);
+    _peerListeners[peer] = peer.createListener();
+    _peerListeners[peer]!
+      ..on<PeerDisposeEvent>(_processPeerDispose)
+      ..on<PeerBitfieldEvent>(_processBitfieldUpdate)
+      ..on<PeerHaveAll>(_processHaveAll)
+      ..on<PeerHaveNone>(_processHaveNone)
+      ..on<PeerHandshakeEvent>(_processPeerHandshake)
+      ..on<PeerChokeChanged>(_processChokeChange)
+      ..on<PeerInterestedChanged>(_processInterestedChange)
+      ..on<PeerConnected>(_peerConnected)
+      ..on<PeerHaveEvent>(_processHaveUpdate)
+      ..on<PeerPieceEvent>(_processReceivePiece)
+      ..on<PeerRequestEvent>(_processRemoteRequest)
+      ..on<PeerSuggestPiece>(_processSuggestPiece)
+      ..on<PeerRejectEvent>(_processRejectRequest)
+      ..on<PeerAllowFast>(_processAllowFast)
+      ..on<RequestTimeoutEvent>(
+          (event) => _processRequestTimeout(peer, event.requests))
+      ..on<ExtendedEvent>((event) =>
+          _processExtendedMessage(peer, event.eventName, event.data));
     _registerExtended(peer);
     peer.connect();
   }
@@ -216,28 +222,16 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   void unHookPeer(Peer peer) {
-    peer.offDispose(_processPeerDispose);
-    peer.offBitfield(_processBitfieldUpdate);
-    peer.offHaveAll(_processHaveAll);
-    peer.offHaveNone(_processHaveNone);
-    peer.offHandShake(_processPeerHandshake);
-    peer.offChokeChange(_processChokeChange);
-    peer.offInterestedChange(_processInterestedChange);
-    peer.offConnect(_peerConnected);
-    peer.offHave(_processHaveUpdate);
-    peer.offPiece(_processReceivePiece);
-    peer.offRequest(_processRemoteRequest);
-    peer.offRequestTimeout(_processRequestTimeout);
-    peer.offRejectRequest(_processRejectRequest);
-    peer.offAllowFast(_processAllowFast);
-    peer.offExtendedEvent(_processExtendedMessage);
+    peer.events.dispose();
+    _peerListeners[peer]?.dispose();
+    _peerListeners.remove(peer);
   }
 
   bool _peerExist(Peer id) {
     return _activePeers.contains(id);
   }
 
-  void _processExtendedMessage(dynamic source, String name, dynamic data) {
+  void _processExtendedMessage(Peer source, String name, dynamic data) {
     log('Processing Extended Message $name', name: runtimeType.toString());
     if (name == 'ut_holepunch') {
       parseHolepunchMessage(data);
@@ -377,19 +371,19 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   /// Even if the other peer has choked me, I can still download.
-  void _processAllowFast(Peer peer, int index) {
-    var piece = _pieceProvider[index];
+  void _processAllowFast(PeerAllowFast event) {
+    var piece = _pieceProvider[event.index];
     if (piece != null && piece.haveAvailableSubPiece()) {
-      piece.addAvailablePeer(peer);
-      requestPieces(peer, index);
+      piece.addAvailablePeer(event.peer);
+      requestPieces(event.peer, event.index);
     }
   }
 
-  void _processSuggestPiece(Peer peer, int index) {}
+  void _processSuggestPiece(PeerSuggestPiece event) {}
 
-  void _processRejectRequest(Peer peer, int index, int begin, int length) {
-    var piece = _pieceProvider[index];
-    piece?.pushSubPieceLast(begin ~/ DEFAULT_REQUEST_LENGTH);
+  void _processRejectRequest(PeerRejectEvent event) {
+    var piece = _pieceProvider[event.index];
+    piece?.pushSubPieceLast(event.begin ~/ DEFAULT_REQUEST_LENGTH);
   }
 
   void _pushSubPiecesBack(List<List<int>> requests) {
@@ -404,28 +398,29 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     }
   }
 
-  void _processPeerDispose(Peer peer, [dynamic reason]) {
+  void _processPeerDispose(PeerDisposeEvent disposeEvent) {
+    _peerListeners.remove(disposeEvent.peer);
     var reconnect = true;
-    if (reason is BadException) {
+    if (disposeEvent.reason is BadException) {
       reconnect = false;
     }
 
-    _peersAddress.remove(peer.address);
-    _incomingAddress.remove(peer.address.address);
-    _activePeers.remove(peer);
+    _peersAddress.remove(disposeEvent.peer.address);
+    _incomingAddress.remove(disposeEvent.peer.address.address);
+    _activePeers.remove(disposeEvent.peer);
 
-    var bufferRequests = peer.requestBuffer;
+    var bufferRequests = disposeEvent.peer.requestBuffer;
     _pushSubPiecesBack(bufferRequests);
 
-    var completedPieces = peer.remoteCompletePieces;
+    var completedPieces = disposeEvent.peer.remoteCompletePieces;
     for (var index in completedPieces) {
-      _pieceProvider[index]?.removeAvailablePeer(peer);
+      _pieceProvider[index]?.removeAvailablePeer(disposeEvent.peer);
     }
-    _pausedRemoteRequest.remove(peer.id);
+    _pausedRemoteRequest.remove(disposeEvent.peer.id);
     var tempIndex = [];
     for (var i = 0; i < _pausedRequest.length; i++) {
       var pr = _pausedRequest[i];
-      if (pr[0] == peer) {
+      if (pr[0] == disposeEvent.peer) {
         tempIndex.add(i);
       }
     }
@@ -433,7 +428,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       _pausedRequest.removeAt(index);
     }
 
-    if (reason is TCPConnectException) {
+    if (disposeEvent.reason is TCPConnectException) {
       // print('TCPConnectException');
       // addNewPeerAddress(peer.address, PeerType.UTP);
       return;
@@ -442,23 +437,26 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (reconnect) {
       if (_activePeers.length < MAX_ACTIVE_PEERS && !isDisposed) {
         addNewPeerAddress(
-          peer.address,
-          peer.source,
-          type: peer.type,
+          disposeEvent.peer.address,
+          disposeEvent.peer.source,
+          type: disposeEvent.peer.type,
         );
       }
     } else {
-      if (peer.isSeeder && !_fileManager.isAllComplete && !isDisposed) {
-        addNewPeerAddress(peer.address, peer.source, type: peer.type);
+      if (disposeEvent.peer.isSeeder &&
+          !_fileManager.isAllComplete &&
+          !isDisposed) {
+        addNewPeerAddress(disposeEvent.peer.address, disposeEvent.peer.source,
+            type: disposeEvent.peer.type);
       }
     }
   }
 
-  void _peerConnected(Peer peer) {
+  void _peerConnected(PeerConnected event) {
     _startedTime ??= DateTime.now().millisecondsSinceEpoch;
     _endTime = null;
-    _activePeers.add(peer);
-    peer.sendHandShake();
+    _activePeers.add(event.peer);
+    event.peer.sendHandShake();
   }
 
   void requestPieces(Peer peer, [int pieceIndex = -1]) async {
@@ -493,117 +491,122 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     }
   }
 
-  void _processReceivePiece(Peer peer, int index, int begin, List<int> block) {
-    _downloaded += block.length;
+  void _processReceivePiece(PeerPieceEvent event) {
+    _downloaded += event.block.length;
 
-    var piece = _pieceManager[index];
+    var piece = _pieceManager[event.index];
+    var i = event.index;
     if (piece != null) {
-      var blockStart = piece.offset + begin;
-      var blockEnd = blockStart + block.length;
+      var blockStart = piece.offset + event.begin;
+      var blockEnd = blockStart + event.block.length;
       if (blockEnd > piece.end) {
         log('Error:',
             error: 'Piece overlaps with next piece',
             name: runtimeType.toString());
         return;
       }
-      var i = index;
+
       // TODO: improve
       if (!piece.isCompleted) {
-        Timer.run(() => _fileManager.writeFile(i, begin, block));
-        piece.subPieceDownloadComplete(begin);
+        Timer.run(() =>
+            _fileManager.writeFile(event.index, event.begin, event.block));
+        piece.subPieceDownloadComplete(event.begin);
       }
-      if (piece.haveAvailableSubPiece()) index = -1;
+      if (piece.haveAvailableSubPiece()) i = -1;
     }
-    Timer.run(() => requestPieces(peer, index));
+    Timer.run(() => requestPieces(event.peer, i));
   }
 
-  void _processPeerHandshake(Peer peer, String remotePeerId, data) {
-    peer.sendBitfield(_fileManager.localBitfield);
+  void _processPeerHandshake(PeerHandshakeEvent event) {
+    event.peer.sendBitfield(_fileManager.localBitfield);
   }
 
-  void _processRemoteRequest(Peer peer, int index, int begin, int length) {
+  void _processRemoteRequest(PeerRequestEvent event) {
     if (isPaused) {
-      _pausedRemoteRequest[peer.id] ??= [];
-      var pausedRequest = _pausedRemoteRequest[peer.id];
-      pausedRequest?.add([peer, index, begin, length]);
+      _pausedRemoteRequest[event.peer.id] ??= [];
+      var pausedRequest = _pausedRemoteRequest[event.peer.id];
+      pausedRequest?.add([event.peer, event.index, event.begin, event.length]);
       return;
     }
-    _remoteRequest.add([index, begin, peer]);
-    _fileManager.readFile(index, begin, length);
+    _remoteRequest.add([event.index, event.begin, event.peer]);
+    _fileManager.readFile(event.index, event.begin, event.length);
   }
 
-  void _processHaveAll(Peer peer) {
-    _processBitfieldUpdate(peer, peer.remoteBitfield);
+  void _processHaveAll(PeerHaveAll event) {
+    _processBitfieldUpdate(
+        PeerBitfieldEvent(event.peer, event.peer.remoteBitfield));
   }
 
-  void _processHaveNone(Peer peer) {
-    _processBitfieldUpdate(peer, null);
+  void _processHaveNone(PeerHaveNone event) {
+    _processBitfieldUpdate(PeerBitfieldEvent(event.peer, null));
   }
 
-  void _processBitfieldUpdate(Peer peer, Bitfield? bitfield) {
-    if (bitfield != null) {
-      if (peer.interestedRemote) return;
-      if (_fileManager.isAllComplete && peer.isSeeder) {
-        peer.dispose(BadException(
+  void _processBitfieldUpdate(PeerBitfieldEvent bitfieldEvent) {
+    if (bitfieldEvent.bitfield != null) {
+      if (bitfieldEvent.peer.interestedRemote) return;
+      if (_fileManager.isAllComplete && bitfieldEvent.peer.isSeeder) {
+        bitfieldEvent.peer.dispose(BadException(
             "Do not connect to Seeder if the download is already completed"));
         return;
       }
       for (var i = 0; i < _fileManager.piecesNumber; i++) {
-        if (bitfield.getBit(i)) {
-          if (!peer.interestedRemote && !_fileManager.localHave(i)) {
-            peer.sendInterested(true);
+        if (bitfieldEvent.bitfield!.getBit(i)) {
+          if (!bitfieldEvent.peer.interestedRemote &&
+              !_fileManager.localHave(i)) {
+            bitfieldEvent.peer.sendInterested(true);
             return;
           }
         }
       }
     }
-    peer.sendInterested(false);
+    bitfieldEvent.peer.sendInterested(false);
   }
 
-  void _processHaveUpdate(Peer peer, List<int> indices) {
+  void _processHaveUpdate(PeerHaveEvent event) {
     var flag = false;
-    for (var index in indices) {
+    for (var index in event.indices) {
       if (_pieceProvider[index] == null) continue;
 
       if (!_fileManager.localHave(index)) {
-        if (peer.chokeMe) {
-          peer.sendInterested(true);
+        if (event.peer.chokeMe) {
+          event.peer.sendInterested(true);
         } else {
           flag = true;
-          _pieceProvider[index]?.addAvailablePeer(peer);
+          _pieceProvider[index]?.addAvailablePeer(event.peer);
         }
       }
     }
-    if (flag && peer.isSleeping) Timer.run(() => requestPieces(peer));
+    if (flag && event.peer.isSleeping) {
+      Timer.run(() => requestPieces(event.peer));
+    }
   }
 
-  void _processChokeChange(Peer peer, bool choke) {
+  void _processChokeChange(PeerChokeChanged event) {
     // Update available peers for pieces.
-    if (!choke) {
-      var completedPieces = peer.remoteCompletePieces;
+    if (!event.choked) {
+      var completedPieces = event.peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.addAvailablePeer(peer);
+        _pieceProvider[index]?.addAvailablePeer(event.peer);
       }
       // Here, start notifying requests.
-      Timer.run(() => requestPieces(peer));
+      Timer.run(() => requestPieces(event.peer));
     } else {
-      var completedPieces = peer.remoteCompletePieces;
+      var completedPieces = event.peer.remoteCompletePieces;
       for (var index in completedPieces) {
-        _pieceProvider[index]?.removeAvailablePeer(peer);
+        _pieceProvider[index]?.removeAvailablePeer(event.peer);
       }
     }
   }
 
-  void _processInterestedChange(Peer peer, bool interested) {
-    if (interested) {
-      peer.sendChoke(false);
+  void _processInterestedChange(PeerInterestedChanged event) {
+    if (event.interested) {
+      event.peer.sendChoke(false);
     } else {
-      peer.sendChoke(true); // Choke it if not interested.
+      event.peer.sendChoke(true); // Choke it if not interested.
     }
   }
 
-  void _processRequestTimeout(dynamic source, List<List<int>> requests) {
-    var peer = source as Peer;
+  void _processRequestTimeout(Peer peer, List<List<int>> requests) {
     var flag = false;
     for (var element in requests) {
       if (element[4] >= 3) {
@@ -669,7 +672,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
         var begin = element[2];
         var length = element[3];
         if (!peer.isDisposed) {
-          Timer.run(() => _processRemoteRequest(peer, index, begin, length));
+          Timer.run(() => _processRemoteRequest(
+              PeerRequestEvent(peer, index, begin, length)));
         }
       }
     });
@@ -677,7 +681,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   Future disposeAllSeeder([dynamic reason]) async {
-    for (var peer in _activePeers) {
+    for (var peer in [..._activePeers]) {
       if (peer.isSeeder) {
         await peer.dispose(reason);
       }
