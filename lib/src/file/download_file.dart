@@ -4,14 +4,10 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
+import 'package:dtorrent_task/src/file/download_file_requests.dart';
 import 'package:dtorrent_task/src/file/utils.dart';
 import 'package:dtorrent_task/src/piece/piece_base.dart';
-import 'package:dtorrent_task/src/stream/stream.dart';
 import 'package:dtorrent_task/src/utils.dart';
-
-const READ = 'read';
-const FLUSH = 'flush';
-const WRITE = 'write';
 
 class DownloadFile {
   final String filePath;
@@ -39,14 +35,14 @@ class DownloadFile {
 
   RandomAccessFile? _readAccess;
 
-  StreamController? _streamController;
+  StreamController<FileRequest>? _streamController;
 
   late StreamController<List<int>> hlsStreamController = StreamController();
 
   int streamEndPosition = 0;
   int streamPosition = 0;
   int get streamLengthLeft => streamEndPosition - streamPosition;
-  StreamSubscription? _streamSubscription;
+  StreamSubscription<FileRequest>? _streamSubscription;
 
   DownloadFile(
     this.filePath,
@@ -79,28 +75,23 @@ class DownloadFile {
   ///
   Future<bool> requestWrite(
       int position, List<int> block, int start, int end) async {
-    _writeAccess ??= await getRandomAccessFile(WRITE);
+    _writeAccess ??= await getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
-    _streamController?.add({
-      'type': WRITE,
-      'position': position,
-      'block': block,
-      'start': start,
-      'end': end,
-      'completer': completer
-    });
+    _streamController?.add(WriteRequest(
+        position: position,
+        start: start,
+        end: end,
+        block: block,
+        completer: completer));
+
     return completer.future;
   }
 
   Future<List<int>> requestRead(int position, int length) async {
-    _readAccess ??= await getRandomAccessFile(READ);
+    _readAccess ??= await getRandomAccessFile(FileRequestType.read);
     var completer = Completer<List<int>>();
-    _streamController?.add({
-      'type': READ,
-      'position': position,
-      'length': length,
-      'completer': completer
-    });
+    _streamController?.add(
+        ReadRequest(completer: completer, position: position, length: length));
     return completer.future;
   }
 
@@ -113,7 +104,7 @@ class DownloadFile {
     streamPosition = startByte; // reset start position
     // if the stream was used before, re instantiate it
     hlsStreamController.close();
-    hlsStreamController = StreamController();
+    hlsStreamController = StreamController<List<int>>();
     var lastDownloadedByte = calculateLastDownloadedByte(offsetStart);
     if (lastDownloadedByte == null) return null;
     var fileLastDownloadedByte = lastDownloadedByte - offset;
@@ -192,74 +183,64 @@ class DownloadFile {
   /// Only one request is processed at a time. The Stream is paused through StreamSubscription
   /// upon entering this method, and it resumes reading from the channel only after processing
   /// the current request.
-  void _processRequest(event) async {
+  void _processRequest(FileRequest event) async {
     _streamSubscription?.pause();
-    if (event['type'] == WRITE) {
+    if (event is WriteRequest) {
       await _write(event);
     }
-    if (event['type'] == READ) {
+    if (event is ReadRequest) {
       await _read(event);
     }
-    if (event['type'] == FLUSH) {
+    if (event is FlushRequest) {
       await _flush(event);
     }
     _streamSubscription?.resume();
   }
 
-  Future _write(event) async {
-    Completer completer = event['completer'];
+  Future<void> _write(WriteRequest request) async {
     try {
-      int position = event['position'];
-      int start = event['start'];
-      int end = event['end'];
-      List<int> block = event['block'];
-
-      _writeAccess = await getRandomAccessFile(WRITE);
-      _writeAccess = await _writeAccess?.setPosition(position);
-      _writeAccess = await _writeAccess?.writeFrom(block, start, end);
-      completer.complete(true);
+      _writeAccess = await getRandomAccessFile(FileRequestType.write);
+      _writeAccess = await _writeAccess?.setPosition(request.position);
+      _writeAccess = await _writeAccess?.writeFrom(
+          request.block, request.start, request.end);
+      request.completer.complete(true);
       // if there is a request pending push bytes to it
       pushBytes();
-      downloadedBytes += end - start;
+      downloadedBytes += request.end - request.start;
     } catch (e) {
       log('Write file error:', error: e, name: runtimeType.toString());
-      completer.complete(false);
+      request.completer.complete(false);
     }
   }
 
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
-    _writeAccess ??= await getRandomAccessFile(WRITE);
+    _writeAccess ??= await getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
-    _streamController?.add({'type': FLUSH, 'completer': completer});
+    _streamController?.add(FlushRequest(completer: completer));
     return completer.future;
   }
 
-  Future _flush(event) async {
-    Completer completer = event['completer'];
+  Future<void> _flush(FlushRequest event) async {
     try {
-      _writeAccess = await getRandomAccessFile(WRITE);
+      _writeAccess = await getRandomAccessFile(FileRequestType.write);
       await _writeAccess?.flush();
-      completer.complete(true);
+      event.completer.complete(true);
     } catch (e) {
       log('Flush error:', error: e, name: runtimeType.toString());
-      completer.complete(false);
+      event.completer.complete(false);
     }
   }
 
-  Future _read(event) async {
-    Completer completer = event['completer'];
+  Future<void> _read(ReadRequest request) async {
     try {
-      int position = event['position'];
-      int length = event['length'];
-
-      var access = await getRandomAccessFile(READ);
-      access = await access.setPosition(position);
-      var contents = await access.read(length);
-      completer.complete(contents);
+      var access = await getRandomAccessFile(FileRequestType.read);
+      access = await access.setPosition(request.position);
+      var contents = await access.read(request.length);
+      request.completer.complete(contents);
     } catch (e) {
       log('Read file error:', error: e, name: runtimeType.toString());
-      completer.complete(<int>[]);
+      request.completer.complete(<int>[]);
     }
   }
 
@@ -281,13 +262,13 @@ class DownloadFile {
     return File(filePath).exists();
   }
 
-  Future<RandomAccessFile> getRandomAccessFile(String type) async {
+  Future<RandomAccessFile> getRandomAccessFile(FileRequestType type) async {
     var file = await _getOrCreateFile();
     RandomAccessFile? access;
-    if (type == WRITE) {
+    if (type == FileRequestType.write) {
       _writeAccess ??= await file?.open(mode: FileMode.writeOnlyAppend);
       access = _writeAccess;
-    } else if (type == READ) {
+    } else {
       _readAccess ??= await file?.open(mode: FileMode.read);
       access = _readAccess;
     }
