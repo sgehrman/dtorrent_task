@@ -41,3 +41,15 @@
 
 ## 0.3.3
 - migrate to events_emitter2
+
+## 0.3.4
+- use events_emitter and streams when possible
+- video streaming fixes
+- fix tests
+- validate completed pieces
+- add task start, task stop, task resume events
+- move more dynamic types to explicit types
+- update deps and sdk constraints
+
+## 0.3.5
+- use more broad collection constraints
