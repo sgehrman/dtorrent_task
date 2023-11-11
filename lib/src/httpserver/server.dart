@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -182,14 +183,7 @@ class StreamingServer {
       request.response.close();
       return;
     }
-
-    bytes = _torrentStream.createStream(
-        filePosition: startPosition,
-        endPosition: endPosition,
-        fileName: file.name);
     if (request.method == 'HEAD') return request.response.close();
-
-    if (bytes == null) return;
     request.response.headers.add('Accept-Ranges', 'bytes');
     request.response.headers.add('Connection', 'keep-alive');
     request.response.headers.add('Keep-Alive', 'timeout=5');
@@ -206,13 +200,22 @@ class StreamingServer {
       request.response.headers.add('Content-Range',
           'bytes ${ranges.ranges[0].start}-${ranges.ranges[0].end}/${file.length}');
     }
-    try {
-      await request.response.addStream(bytes);
+    bytes = _torrentStream.createStream(
+        filePosition: startPosition,
+        endPosition: endPosition,
+        fileName: file.name);
 
-      await request.response.close();
-    } catch (e) {
-      print('streamed data did not finish');
+    if (bytes != null) {
+      try {
+        await request.response.addStream(bytes).then((value) async {
+          log('stream finished', name: runtimeType.toString());
+          await request.response.close();
+        });
+      } catch (e) {
+        log('streamed data did not finish', name: runtimeType.toString());
+      }
     }
+    request.response.close();
   }
 
   Future<StreamingServerStarted> start() async {
@@ -222,9 +225,9 @@ class StreamingServer {
     return StreamingServerStarted(port: port, internetAddress: address);
   }
 
-  void stop() {
+  Future<void> stop() async {
     running = false;
-    _server?.close();
-    _streamSubscription?.cancel();
+    await _server?.close();
+    await _streamSubscription?.cancel();
   }
 }

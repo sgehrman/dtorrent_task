@@ -335,6 +335,7 @@ class TorrentStream
   Future stop([bool force = false]) async {
     state = TaskState.stopped;
     await _tracker?.stop(force);
+    await _streamingServer?.stop();
     events.emit(TaskStopped());
   }
 

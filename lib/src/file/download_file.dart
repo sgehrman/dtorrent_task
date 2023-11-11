@@ -38,6 +38,8 @@ class DownloadFile {
   StreamController<FileRequest>? _streamController;
 
   late StreamController<List<int>> hlsStreamController = StreamController();
+  StreamSubscription? bytesRequestSubscription;
+  late StreamController bytesRequestController = StreamController();
 
   int streamEndPosition = 0;
   int streamPosition = 0;
@@ -78,11 +80,12 @@ class DownloadFile {
     _writeAccess ??= await getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(WriteRequest(
-        position: position,
-        start: start,
-        end: end,
-        block: block,
-        completer: completer));
+      position: position,
+      start: start,
+      end: end,
+      block: block,
+      completer: completer,
+    ));
 
     return completer.future;
   }
@@ -98,19 +101,17 @@ class DownloadFile {
   Stream<List<int>>? createStream(int startByte, int endByte) {
     // TODO: This algorithm doesn't work well when the moov atom is not in the start of the file
     // TODO: this currently support only one stream at a time, should it support more? how do we handle required pieces!
-    var offsetStart = offset + startByte; // add the file offset
-    // var lengthLeft = endByte - startByte; // the requested length
+    hlsStreamController.close();
+
+    bytesRequestSubscription?.cancel();
+    bytesRequestController.close();
+    hlsStreamController = StreamController<List<int>>();
     streamEndPosition = endByte; //reset endposition
     streamPosition = startByte; // reset start position
-    // if the stream was used before, re instantiate it
-    hlsStreamController.close();
-    hlsStreamController = StreamController<List<int>>();
-    var lastDownloadedByte = calculateLastDownloadedByte(offsetStart);
-    if (lastDownloadedByte == null) return null;
-    var fileLastDownloadedByte = lastDownloadedByte - offset;
-    var lengthToRead = math.min(fileLastDownloadedByte, endByte) - startByte;
-    readAndPushBytes(startByte, lengthToRead);
-
+    bytesRequestController = StreamController();
+    bytesRequestSubscription =
+        bytesRequestController.stream.listen(_processBytes);
+    bytesRequestController.add(null);
     return hlsStreamController.stream;
   }
 
@@ -136,26 +137,30 @@ class DownloadFile {
     return math.min(totalLastByte, end);
   }
 
-  pushBytes() {
+  Future<void> _processBytes(_) async {
+    bytesRequestSubscription?.pause();
+    await pushBytes();
+    bytesRequestSubscription?.resume();
+  }
+
+  Future<void> pushBytes() async {
     if (hlsStreamController.isClosed) return;
 
     var lastDownloadedByte =
         calculateLastDownloadedByte(streamPosition + offset);
-    if (lastDownloadedByte == null) return null;
+    if (lastDownloadedByte == null) return;
     var fileLastDownloadedByte = lastDownloadedByte - offset;
-
+    //TODO: what if the file is really big? should we read a maximum smaller size?
     var lengthToRead =
         math.min(fileLastDownloadedByte, streamEndPosition) - streamPosition;
 
-    if (lengthToRead > 0) {
-      readAndPushBytes(
-        streamPosition,
-        lengthToRead,
-      );
-    }
+    await _readAndPushBytes(
+      streamPosition,
+      lengthToRead,
+    );
   }
 
-  readAndPushBytes(
+  Future<void> _readAndPushBytes(
     int start,
     int lengthToRead,
   ) async {
@@ -174,7 +179,6 @@ class DownloadFile {
       hlsStreamController.close();
       streamPosition = 0;
       streamEndPosition = 0;
-      return;
     }
   }
 
@@ -205,7 +209,7 @@ class DownloadFile {
           request.block, request.start, request.end);
       request.completer.complete(true);
       // if there is a request pending push bytes to it
-      pushBytes();
+      bytesRequestController.add(null);
       downloadedBytes += request.end - request.start;
     } catch (e) {
       log('Write file error:', error: e, name: runtimeType.toString());
@@ -288,6 +292,7 @@ class DownloadFile {
       await _writeAccess?.flush();
       await _writeAccess?.close();
       await _readAccess?.close();
+      await hlsStreamController.close();
     } catch (e) {
       log('Close file error:', error: e, name: runtimeType.toString());
     } finally {
