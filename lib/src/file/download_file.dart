@@ -292,7 +292,9 @@ class DownloadFile {
       await _writeAccess?.flush();
       await _writeAccess?.close();
       await _readAccess?.close();
-      await hlsStreamController.close();
+      //  hlsStreamController can be closed by this moment via
+      //  _readAndPushBytes. So, the future never completes.
+      if (!hlsStreamController.isClosed) hlsStreamController.close();
     } catch (e) {
       log('Close file error:', error: e, name: runtimeType.toString());
     } finally {
