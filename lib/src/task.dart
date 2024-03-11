@@ -127,6 +127,8 @@ class _TorrentTask
       _peerId; // This is the generated local peer ID, which is different from the ID used in the Peer class.
 
   ServerSocket? _serverSocket;
+
+  StreamSubscription<Socket>? _serverSocketListener;
   // ServerUTPSocket? _utpServer;
 
   final Set<InternetAddress> _comingIp = {};
@@ -303,7 +305,7 @@ class _TorrentTask
     // Incoming peer:
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
     await _init(_metaInfo, _savePath);
-    _serverSocket?.listen(_hookInPeer);
+    _serverSocketListener = _serverSocket?.listen(_hookInPeer);
     // _utpServer ??= await ServerUTPSocket.bind(
     //     InternetAddress.anyIPv4, _serverSocket?.port ?? 0);
     // _utpServer?.listen(_hookUTP);
@@ -368,13 +370,14 @@ class _TorrentTask
     _tracker = null;
     await _peersManager?.dispose();
     _peersManager = null;
+    _serverSocketListener?.cancel();
+    _serverSocketListener = null;
     await _serverSocket?.close();
     _serverSocket = null;
     await _fileManager?.close();
     _fileManager = null;
     await _dht?.stop();
     _dht = null;
-
     _lsd?.close();
     _lsd = null;
     _peerIds.clear();
