@@ -379,6 +379,7 @@ class _TorrentTask
     _lsd = null;
     _peerIds.clear();
     _comingIp.clear();
+    state = TaskState.stopped;
     return;
   }
 

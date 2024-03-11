@@ -256,6 +256,15 @@ void main() {
       await stateFile.delete(); //Deleting twice.
       assert(!await t.exists());
     });
+
+    test('Stop task test', () async {
+      assert(torrent != null, 'No torrent provided');
+      final newTask = TorrentTask.newTask(torrent!, directory);
+      await newTask.start();
+      assert(newTask.state == TaskState.running);
+      await newTask.stop();
+      assert(newTask.state == TaskState.stopped);
+    });
   });
 
   group('Temp file access - ', () {
