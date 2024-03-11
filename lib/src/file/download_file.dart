@@ -284,7 +284,7 @@ class DownloadFile {
     return access!;
   }
 
-  Future close() async {
+  Future<void> close() async {
     if (isClosed) return;
     _closed = true;
     try {
@@ -306,10 +306,9 @@ class DownloadFile {
       _streamController = null;
       _bytesRequestSubscription = null;
     }
-    return;
   }
 
-  Future flush() async {
+  Future<void> flush() async {
     try {
       await _writeAccess?.flush();
     } catch (e) {
@@ -317,15 +316,18 @@ class DownloadFile {
     }
   }
 
-  Future delete() async {
+  Future<FileSystemEntity?> delete() async {
     try {
       await close();
-    } finally {
       var temp = _file;
       _file = null;
+      // here we can get a FileSystemException
       var r = await temp?.delete();
       return r;
+    } catch (e) {
+      log('delete() error: ', error: e, name: runtimeType.toString());
     }
+    return null;
   }
 
   @override
