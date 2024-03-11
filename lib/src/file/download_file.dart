@@ -37,13 +37,14 @@ class DownloadFile {
 
   StreamController<FileRequest>? _streamController;
 
-  late StreamController<List<int>> hlsStreamController = StreamController();
-  StreamSubscription? bytesRequestSubscription;
-  late StreamController bytesRequestController = StreamController();
+  StreamController<List<int>> _hlsStreamController = StreamController();
 
-  int streamEndPosition = 0;
-  int streamPosition = 0;
-  int get streamLengthLeft => streamEndPosition - streamPosition;
+  StreamSubscription? _bytesRequestSubscription;
+  StreamController _bytesRequestController = StreamController();
+
+  int _streamEndPosition = 0;
+  int _streamPosition = 0;
+  int get _streamLengthLeft => _streamEndPosition - _streamPosition;
   StreamSubscription<FileRequest>? _streamSubscription;
 
   DownloadFile(
@@ -77,7 +78,7 @@ class DownloadFile {
   ///
   Future<bool> requestWrite(
       int position, List<int> block, int start, int end) async {
-    _writeAccess ??= await getRandomAccessFile(FileRequestType.write);
+    _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(WriteRequest(
       position: position,
@@ -91,7 +92,7 @@ class DownloadFile {
   }
 
   Future<List<int>> requestRead(int position, int length) async {
-    _readAccess ??= await getRandomAccessFile(FileRequestType.read);
+    _readAccess ??= await _getRandomAccessFile(FileRequestType.read);
     var completer = Completer<List<int>>();
     _streamController?.add(
         ReadRequest(completer: completer, position: position, length: length));
@@ -101,18 +102,18 @@ class DownloadFile {
   Stream<List<int>>? createStream(int startByte, int endByte) {
     // TODO: This algorithm doesn't work well when the moov atom is not in the start of the file
     // TODO: this currently support only one stream at a time, should it support more? how do we handle required pieces!
-    hlsStreamController.close();
+    _hlsStreamController.close();
 
-    bytesRequestSubscription?.cancel();
-    bytesRequestController.close();
-    hlsStreamController = StreamController<List<int>>();
-    streamEndPosition = endByte; //reset endposition
-    streamPosition = startByte; // reset start position
-    bytesRequestController = StreamController();
-    bytesRequestSubscription =
-        bytesRequestController.stream.listen(_processBytes);
-    bytesRequestController.add(null);
-    return hlsStreamController.stream;
+    _bytesRequestSubscription?.cancel();
+    _bytesRequestController.close();
+    _hlsStreamController = StreamController<List<int>>();
+    _streamEndPosition = endByte; //reset endposition
+    _streamPosition = startByte; // reset start position
+    _bytesRequestController = StreamController();
+    _bytesRequestSubscription =
+        _bytesRequestController.stream.listen(_processBytes);
+    _bytesRequestController.add(null);
+    return _hlsStreamController.stream;
   }
 
   ///
@@ -138,24 +139,24 @@ class DownloadFile {
   }
 
   Future<void> _processBytes(_) async {
-    bytesRequestSubscription?.pause();
-    await pushBytes();
-    bytesRequestSubscription?.resume();
+    _bytesRequestSubscription?.pause();
+    await _pushBytes();
+    _bytesRequestSubscription?.resume();
   }
 
-  Future<void> pushBytes() async {
-    if (hlsStreamController.isClosed) return;
+  Future<void> _pushBytes() async {
+    if (_hlsStreamController.isClosed) return;
 
     var lastDownloadedByte =
-        calculateLastDownloadedByte(streamPosition + offset);
+        calculateLastDownloadedByte(_streamPosition + offset);
     if (lastDownloadedByte == null) return;
     var fileLastDownloadedByte = lastDownloadedByte - offset;
     //TODO: what if the file is really big? should we read a maximum smaller size?
     var lengthToRead =
-        math.min(fileLastDownloadedByte, streamEndPosition) - streamPosition;
+        math.min(fileLastDownloadedByte, _streamEndPosition) - _streamPosition;
 
     await _readAndPushBytes(
-      streamPosition,
+      _streamPosition,
       lengthToRead,
     );
   }
@@ -164,21 +165,21 @@ class DownloadFile {
     int start,
     int lengthToRead,
   ) async {
-    if (hlsStreamController.isClosed) return;
+    if (_hlsStreamController.isClosed) return;
     var bytes = await requestRead(start, lengthToRead);
 
     var timeStamp = DateTime.now();
     log("[$timeStamp] startByte: $start, lengthToRead:$lengthToRead, downloadedBytes: $downloadedBytes");
-    if (hlsStreamController.isClosed) return;
+    if (_hlsStreamController.isClosed) return;
     var leftPosition = start + bytes.length;
-    streamPosition = leftPosition;
+    _streamPosition = leftPosition;
 
-    hlsStreamController.add(bytes);
-    log("[$timeStamp] lengthLeft: $streamLengthLeft");
-    if (streamLengthLeft < 1) {
-      hlsStreamController.close();
-      streamPosition = 0;
-      streamEndPosition = 0;
+    _hlsStreamController.add(bytes);
+    log("[$timeStamp] lengthLeft: $_streamLengthLeft");
+    if (_streamLengthLeft < 1) {
+      _hlsStreamController.close();
+      _streamPosition = 0;
+      _streamEndPosition = 0;
     }
   }
 
@@ -203,13 +204,13 @@ class DownloadFile {
 
   Future<void> _write(WriteRequest request) async {
     try {
-      _writeAccess = await getRandomAccessFile(FileRequestType.write);
+      _writeAccess = await _getRandomAccessFile(FileRequestType.write);
       _writeAccess = await _writeAccess?.setPosition(request.position);
       _writeAccess = await _writeAccess?.writeFrom(
           request.block, request.start, request.end);
       request.completer.complete(true);
       // if there is a request pending push bytes to it
-      bytesRequestController.add(null);
+      _bytesRequestController.add(null);
       downloadedBytes += request.end - request.start;
     } catch (e) {
       log('Write file error:', error: e, name: runtimeType.toString());
@@ -219,7 +220,7 @@ class DownloadFile {
 
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
-    _writeAccess ??= await getRandomAccessFile(FileRequestType.write);
+    _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
     var completer = Completer<bool>();
     _streamController?.add(FlushRequest(completer: completer));
     return completer.future;
@@ -227,7 +228,7 @@ class DownloadFile {
 
   Future<void> _flush(FlushRequest event) async {
     try {
-      _writeAccess = await getRandomAccessFile(FileRequestType.write);
+      _writeAccess = await _getRandomAccessFile(FileRequestType.write);
       await _writeAccess?.flush();
       event.completer.complete(true);
     } catch (e) {
@@ -238,7 +239,7 @@ class DownloadFile {
 
   Future<void> _read(ReadRequest request) async {
     try {
-      var access = await getRandomAccessFile(FileRequestType.read);
+      var access = await _getRandomAccessFile(FileRequestType.read);
       access = await access.setPosition(request.position);
       var contents = await access.read(request.length);
       request.completer.complete(contents);
@@ -266,7 +267,7 @@ class DownloadFile {
     return File(filePath).exists();
   }
 
-  Future<RandomAccessFile> getRandomAccessFile(FileRequestType type) async {
+  Future<RandomAccessFile> _getRandomAccessFile(FileRequestType type) async {
     var file = await _getOrCreateFile();
     RandomAccessFile? access;
     if (type == FileRequestType.write) {
@@ -294,7 +295,8 @@ class DownloadFile {
       await _readAccess?.close();
       //  hlsStreamController can be closed by this moment via
       //  _readAndPushBytes. So, the future never completes.
-      if (!hlsStreamController.isClosed) hlsStreamController.close();
+      if (!_hlsStreamController.isClosed) _hlsStreamController.close();
+      await _bytesRequestSubscription?.cancel();
     } catch (e) {
       log('Close file error:', error: e, name: runtimeType.toString());
     } finally {
@@ -302,6 +304,7 @@ class DownloadFile {
       _readAccess = null;
       _streamSubscription = null;
       _streamController = null;
+      _bytesRequestSubscription = null;
     }
     return;
   }
