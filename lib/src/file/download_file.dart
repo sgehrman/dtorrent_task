@@ -122,7 +122,7 @@ class DownloadFile {
   ///
   /// the output will be offseted
   ///
-  int? calculateLastDownloadedByte(int startByte) {
+  int? _calculateLastDownloadedByte(int startByte) {
     var startPiece = getPiece(pieces, startByte);
     if (startPiece == null) return null;
     var startPieceIndex = pieces.indexOf(startPiece);
@@ -148,7 +148,7 @@ class DownloadFile {
     if (_hlsStreamController.isClosed) return;
 
     var lastDownloadedByte =
-        calculateLastDownloadedByte(_streamPosition + offset);
+        _calculateLastDownloadedByte(_streamPosition + offset);
     if (lastDownloadedByte == null) return;
     var fileLastDownloadedByte = lastDownloadedByte - offset;
     //TODO: what if the file is really big? should we read a maximum smaller size?
@@ -305,14 +305,6 @@ class DownloadFile {
       _streamSubscription = null;
       _streamController = null;
       _bytesRequestSubscription = null;
-    }
-  }
-
-  Future<void> flush() async {
-    try {
-      await _writeAccess?.flush();
-    } catch (e) {
-      log('Flush file error:', error: e, name: runtimeType.toString());
     }
   }
 
