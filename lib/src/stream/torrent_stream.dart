@@ -36,6 +36,10 @@ class TorrentStream
 
   DHT? _dht = DHT();
 
+  @override
+  // The dht instance
+  DHT? get dht => _dht;
+
   LSD? _lsd;
 
   StateFile? _stateFile;
@@ -54,6 +58,12 @@ class TorrentStream
   StreamingServer? _streamingServer;
 
   final Torrent _metaInfo;
+
+  @override
+  Torrent get metaInfo => _metaInfo;
+
+  @override
+  String get name => _metaInfo.name;
 
   final String _savePath;
 
@@ -453,7 +463,4 @@ class TorrentStream
   void requestPeersFromDHT() {
     _dht?.requestPeers(String.fromCharCodes(_metaInfo.infoHashBuffer));
   }
-
-  @override
-  Torrent get metaInfo => _metaInfo;
 }

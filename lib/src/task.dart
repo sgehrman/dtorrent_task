@@ -34,6 +34,13 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   void startAnnounceUrl(Uri url, Uint8List infoHash);
   Torrent get metaInfo;
 
+  // The name of the torrent
+  String get name => metaInfo.name;
+
+  // The dht instance
+
+  DHT? get dht;
+
   int get allPeersNumber;
 
   int get connectedPeersNumber;
@@ -102,6 +109,10 @@ class _TorrentTask
 
   DHT? _dht = DHT();
 
+  @override
+  // The Dht instance
+  DHT? get dht => _dht;
+
   LSD? _lsd;
 
   StateFile? _stateFile;
@@ -118,6 +129,9 @@ class _TorrentTask
   final Torrent _metaInfo;
   @override
   Torrent get metaInfo => _metaInfo;
+
+  @override
+  String get name => metaInfo.name;
 
   final String _savePath;
 
