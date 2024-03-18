@@ -342,7 +342,8 @@ class _TorrentTask
 
     peersManagerListener?.on<AllComplete>(_whenTaskDownloadComplete);
     fileManagerListener
-        ?.on<DownloadManagerFileCompleted>(_whenFileDownloadComplete);
+      ?..on<DownloadManagerFileCompleted>(_whenFileDownloadComplete)
+      ..on<StateFileUpdated>((event) => events.emit(StateFileUpdated()));
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
     // _lsd?.port = _utpServer?.port;
     _lsd?.start();

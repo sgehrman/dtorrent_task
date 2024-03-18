@@ -6,6 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/file/utils.dart';
+import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_task/src/utils.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import '../peer/peer_base.dart';
@@ -72,16 +73,20 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
 
   int get piecesNumber => _stateFile.bitfield.piecesNum;
 
-  Future<bool> updateBitfield(int index, [bool have = true]) {
-    return _stateFile.updateBitfield(index, have);
+  Future<bool> updateBitfield(int index, [bool have = true]) async {
+    var updated = await _stateFile.updateBitfield(index, have);
+    if (updated) events.emit(StateFileUpdated());
+    return updated;
   }
 
   // Future<bool> updateBitfields(List<int> indices, [List<bool> haves]) {
   //   return _stateFile.updateBitfields(indices, haves);
   // }
 
-  Future<bool> updateUpload(int uploaded) {
-    return _stateFile.updateUploaded(uploaded);
+  Future<bool> updateUpload(int uploaded) async {
+    var updated = await _stateFile.updateUploaded(uploaded);
+    if (updated) events.emit(StateFileUpdated());
+    return updated;
   }
 
   int get downloaded => _stateFile.downloaded;
@@ -108,7 +113,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         }
       }
     }
-
+    events.emit(StateFileUpdated());
     var msg =
         'downloaded：${d / (1024 * 1024)} mb , Progress ${((d / metainfo.length) * 10000).toInt() / 100} %';
     log(msg, name: runtimeType.toString());
