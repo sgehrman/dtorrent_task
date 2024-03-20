@@ -61,7 +61,7 @@ mixin PEX {
     }
   }
 
-  dynamic parsePEXDatas(dynamic source, List<int> message) {
+  void parsePEXDatas(Peer source, List<int> message) {
     var datas = decode(Uint8List.fromList(message));
     _parseAdded(source, datas);
     _parseAdded(source, datas, 'added6', InternetAddressType.IPv6);
@@ -93,6 +93,11 @@ mixin PEX {
         }
         if (ips != null && ips.isNotEmpty) {
           for (var i = 0; i < ips.length; i++) {
+            if (i > flag.length - 1) {
+              // some messages appear to arrive malformed,
+              // where the flags count != ips count
+              continue;
+            }
             var f = flag[i];
             var opts = {};
             if (f & pex_flag_prefers_encryption ==
