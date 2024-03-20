@@ -36,6 +36,9 @@ class LSD with EventsEmittable<LSDEvent> {
   Timer? _timer;
 
   Future<void> start() async {
+    if (port == null) {
+      throw Exception('lsd port is not set');
+    }
     _socket ??= await RawDatagramSocket.bind(InternetAddress.anyIPv4, LSD_PORT,
         reusePort: true);
     _socket?.listen((event) {
