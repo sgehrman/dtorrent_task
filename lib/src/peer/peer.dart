@@ -16,7 +16,13 @@ import 'speed_calculator.dart';
 import 'extended_processor.dart';
 
 const KEEP_ALIVE_MESSAGE = [0, 0, 0, 0];
-const RESERVED = [0, 0, 0, 0, 0, 0, 0, 0];
+
+// BEP0003 states:
+// All later integers sent in the protocol are encoded as four bytes big-endian
+const MESSAGE_INTEGER = 4;
+
+// This is the length of the handshake message which consist of
+// 20 bytes for the header
 const HAND_SHAKE_HEAD = [
   19,
   66,
@@ -39,6 +45,15 @@ const HAND_SHAKE_HEAD = [
   111,
   108
 ];
+// 8 reserved bytes
+const RESERVED = [0, 0, 0, 0, 0, 0, 0, 0];
+// 20 bytes for the infohash
+const INFO_HASH_START = 28;
+// 20 bytes for peer id
+const PEER_ID_START = 48;
+
+// which totals to: 68
+const HAND_SHAKE_MESSAGE_LENGTH = 68;
 
 const ID_CHOKE = 0;
 const ID_UNCHOKE = 1;
@@ -358,12 +373,14 @@ abstract class Peer
     }
     if (_cacheBuffer.isEmpty) return;
     // Check if it's a handshake header.
-    if (_cacheBuffer[0] == 19 && _cacheBuffer.length >= 68) {
+    if (_cacheBuffer[0] == 19 &&
+        _cacheBuffer.length >= HAND_SHAKE_MESSAGE_LENGTH) {
       if (_isHandShakeHead(_cacheBuffer)) {
         if (_validateInfoHash(_cacheBuffer)) {
-          var handshakeBuffer = Uint8List(68);
-          List.copyRange(handshakeBuffer, 0, _cacheBuffer, 0, 68);
-          _cacheBuffer = _cacheBuffer.sublist(68);
+          var handshakeBuffer = Uint8List(HAND_SHAKE_MESSAGE_LENGTH);
+          handshakeBuffer.setRange(0, HAND_SHAKE_MESSAGE_LENGTH, _cacheBuffer);
+          // clear the buffer to only the handshake
+          _cacheBuffer = _cacheBuffer.sublist(HAND_SHAKE_MESSAGE_LENGTH);
           Timer.run(() => _processHandShake(handshakeBuffer));
           if (_cacheBuffer.isNotEmpty) {
             Timer.run(() => _processReceiveData(null));
@@ -376,21 +393,32 @@ abstract class Peer
         }
       }
     }
-    if (_cacheBuffer.length >= 4) {
+    if (_cacheBuffer.length >= MESSAGE_INTEGER) {
       var start = 0;
-      var lengthBuffer = Uint8List(4);
-      List.copyRange(lengthBuffer, 0, _cacheBuffer, start, 4);
+      var lengthBuffer = Uint8List(MESSAGE_INTEGER);
+      lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
       var length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
       List<Uint8List>? piecesMessage;
       List<Uint8List>? haveMessages;
-      while (_cacheBuffer.length - start - 4 >= length) {
+      while (_cacheBuffer.length - start - MESSAGE_INTEGER >= length) {
         if (length == 0) {
+          // keep alive
           Timer.run(() => _processMessage(null, null));
         } else {
+          // skip the message length to read the id
+          // the id is a single byte
+          var id = _cacheBuffer[start + MESSAGE_INTEGER];
+
+          // the message type id is not needed anymore
           var messageBuffer = Uint8List(length - 1);
-          var id = _cacheBuffer[start + 4];
-          List.copyRange(
-              messageBuffer, 0, _cacheBuffer, start + 5, start + 4 + length);
+
+          messageBuffer.setRange(
+            0,
+            messageBuffer.length,
+            _cacheBuffer,
+            start + MESSAGE_INTEGER + 1,
+          );
+
           switch (id) {
             case ID_PIECE:
               piecesMessage ??= <Uint8List>[];
@@ -404,9 +432,10 @@ abstract class Peer
               Timer.run(() => _processMessage(id, messageBuffer));
           }
         }
-        start += (length + 4);
-        if (_cacheBuffer.length - start < 4) break;
-        List.copyRange(lengthBuffer, 0, _cacheBuffer, start, start + 4);
+        // set to the start of the next message
+        start += (MESSAGE_INTEGER + length);
+        if (_cacheBuffer.length - start < MESSAGE_INTEGER) break;
+        lengthBuffer.setRange(0, MESSAGE_INTEGER, _cacheBuffer, start);
         length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
       }
       if (piecesMessage != null && piecesMessage.isNotEmpty) {
@@ -419,17 +448,17 @@ abstract class Peer
     }
   }
 
-  bool _isHandShakeHead(buffer) {
-    if (buffer.length < 68) return false;
-    for (var i = 0; i < 20; i++) {
+  bool _isHandShakeHead(List<int> buffer) {
+    if (buffer.length < HAND_SHAKE_MESSAGE_LENGTH) return false;
+    for (var i = 0; i < HAND_SHAKE_HEAD.length; i++) {
       if (buffer[i] != HAND_SHAKE_HEAD[i]) return false;
     }
     return true;
   }
 
-  bool _validateInfoHash(buffer) {
-    for (var i = 28; i < 48; i++) {
-      if (buffer[i] != _infoHashBuffer[i - 28]) return false;
+  bool _validateInfoHash(List<int> buffer) {
+    for (var i = INFO_HASH_START; i < PEER_ID_START; i++) {
+      if (buffer[i] != _infoHashBuffer[i - INFO_HASH_START]) return false;
     }
     return true;
   }
@@ -703,20 +732,21 @@ abstract class Peer
   void _processReceivePieces(List<Uint8List> messages) {
     var requests = <List<int>>[];
     for (var message in messages) {
-      var dataHead = Uint8List(8);
-      List.copyRange(dataHead, 0, message, 0, 8);
+      // MESSAGE_INTEGER * 2 for index + begin
+      var dataHead = Uint8List(MESSAGE_INTEGER * 2);
+      dataHead.setRange(0, MESSAGE_INTEGER * 2, message);
       var view = ByteData.view(dataHead.buffer);
-      var index = view.getUint32(0);
-      var begin = view.getUint32(4);
-      var blockLength = message.length - 8;
+      var index = view.getUint32(0, Endian.big);
+      var begin = view.getUint32(4, Endian.big);
+      var blockLength = message.length - MESSAGE_INTEGER * 2;
       var request = removeRequest(index, begin, blockLength);
 
       /// Ignore if there are no requests to process.
       if (request == null) {
         continue;
       }
-      var block = Uint8List(message.length - 8);
-      List.copyRange(block, 0, message, 8);
+      var block = Uint8List(blockLength);
+      block.setRange(0, blockLength, message, MESSAGE_INTEGER * 2);
       requests.add(request);
       _log(
           'Received request for Piece ($index, $begin) content, downloaded $downloaded bytes from the current Peer $type $address');
@@ -751,7 +781,7 @@ abstract class Peer
 
   void _processHandShake(List<int> data) {
     _remotePeerId = _parseRemotePeerId(data);
-    var reserved = data.getRange(20, 28);
+    var reserved = data.getRange(HAND_SHAKE_HEAD.length, INFO_HASH_START);
     var fast = reserved.elementAt(7) & 0x04;
     remoteEnableFastPeer = (fast == 0x04);
     var extended = reserved.elementAt(5);
@@ -768,7 +798,8 @@ abstract class Peer
   }
 
   String _parseRemotePeerId(List<int> data) {
-    return String.fromCharCodes(data.sublist(48, 68));
+    return String.fromCharCodes(
+        data.sublist(PEER_ID_START, HAND_SHAKE_MESSAGE_LENGTH));
   }
 
   /// Connect remote peer and return a [Stream] future
@@ -794,18 +825,18 @@ abstract class Peer
     _startToCountdown();
   }
 
-  List<int> _createByteMessage(int id, List<int>? message) {
+  Uint8List _createByteMessage(int id, List<int>? message) {
     var length = 0;
     if (message != null) length = message.length;
     length = length + 1;
-    var datas = List<int>.filled(length + 4, 0);
-    var head = Uint8List(4);
+    var datas = Uint8List(length + MESSAGE_INTEGER);
+    var head = Uint8List(MESSAGE_INTEGER);
     var view1 = ByteData.view(head.buffer);
     view1.setUint32(0, length, Endian.big);
-    List.copyRange(datas, 0, head);
+    datas.setRange(0, head.length, head);
     datas[4] = id;
     if (message != null && message.isNotEmpty) {
-      List.copyRange(datas, 5, message);
+      datas.setRange(5, 5 + message.length, message);
     }
     return datas;
   }
