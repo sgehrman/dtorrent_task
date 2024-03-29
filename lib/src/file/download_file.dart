@@ -10,9 +10,15 @@ import 'package:dtorrent_task/src/piece/piece_base.dart';
 import 'package:dtorrent_task/src/utils.dart';
 
 class DownloadFile {
+  // This is the full path of the local file
   final String filePath;
 
-  final String originalFileName;
+  // This is the path inside the torrent info dictionary
+  final String torrentFilePath;
+
+  // This is the name inside the torrent info dictionary
+  String get originalFileName =>
+      torrentFilePath.split(Platform.pathSeparator).last;
 
 // the offset of the file from the start of the torrent block
   final int offset;
@@ -23,7 +29,7 @@ class DownloadFile {
   int get end => offset + length;
 
   int downloadedBytes = 0;
-  final List<Piece> pieces;
+  List<Piece> pieces;
 
   bool get completelyFlushed => pieces.none((element) => !element.flushed);
   bool get completed => downloadedBytes == length;
@@ -51,7 +57,7 @@ class DownloadFile {
     this.filePath,
     this.offset,
     this.length,
-    this.originalFileName,
+    this.torrentFilePath,
     this.pieces,
   ) {
     for (var piece in pieces) {
