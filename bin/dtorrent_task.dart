@@ -59,6 +59,8 @@ void main(List<String> mainArgs) async {
       (event) => print(
           'Streaming started on http://${event.internetAddress.address}:${event.port}'),
     )
+    ..on<TaskFileCompleted>(
+        (event) => print('${event.file.filePath} file completed'))
     ..on<StateFileUpdated>(
       (event) {
         var progress = '${(task.progress * 100).toStringAsFixed(2)}%';
