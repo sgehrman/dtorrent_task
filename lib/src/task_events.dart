@@ -1,3 +1,4 @@
+import 'package:dtorrent_task/src/file/download_file.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 
 abstract class TaskEvent {}
@@ -13,9 +14,9 @@ class TaskResumed implements TaskEvent {}
 class TaskStarted implements TaskEvent {}
 
 class TaskFileCompleted implements TaskEvent {
-  final String filePath;
+  final DownloadFile file;
   TaskFileCompleted(
-    this.filePath,
+    this.file,
   );
 }
 

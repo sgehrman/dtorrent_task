@@ -109,7 +109,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
         }
         if (file.completelyFlushed) {
           //TODO: is this check enough ?
-          events.emit(DownloadManagerFileCompleted(file.filePath));
+          events.emit(DownloadManagerFileCompleted(file));
         }
       }
     }

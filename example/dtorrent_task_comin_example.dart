@@ -35,7 +35,7 @@ Future<void> main() async {
     }))
     ..on<TaskFileCompleted>(
       (event) {
-        print('${event.filePath} downloaded complete');
+        print('${event.file.originalFileName} downloaded complete');
       },
     );
 

@@ -156,7 +156,7 @@ class TorrentStream
   }
 
   void _whenFileDownloadComplete(DownloadManagerFileCompleted event) {
-    events.emit(TaskFileCompleted(event.filePath));
+    events.emit(TaskFileCompleted(event.file));
   }
 
   void _processTrackerPeerEvent(AnnouncePeerEventEvent event) {

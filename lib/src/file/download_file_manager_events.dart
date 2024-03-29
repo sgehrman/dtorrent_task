@@ -1,3 +1,5 @@
+import 'package:dtorrent_task/src/file/download_file.dart';
+
 abstract class DownloadFileManagerEvent {}
 
 class SubPieceCompleted implements DownloadFileManagerEvent {
@@ -45,8 +47,8 @@ class SubPieceReadCompleted implements DownloadFileManagerEvent {
 }
 
 class DownloadManagerFileCompleted implements DownloadFileManagerEvent {
-  final String filePath;
+  final DownloadFile file;
   DownloadManagerFileCompleted(
-    this.filePath,
+    this.file,
   );
 }
