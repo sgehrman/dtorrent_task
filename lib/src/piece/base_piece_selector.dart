@@ -31,7 +31,8 @@ class BasePieceSelector implements PieceSelector {
 
     var candidatePieces = remoteHavePieces;
     for (var i = 0; i < provider.downloadingPieces.length; i++) {
-      var p = provider.downloadingPieces.elementAt(i);
+      var p = provider.pieces[provider.downloadingPieces.elementAt(i)];
+      if (p == null) continue;
       if (p.containsAvailablePeer(peer) && p.haveAvailableSubPiece()) {
         availablePiece.add(p.index);
       }

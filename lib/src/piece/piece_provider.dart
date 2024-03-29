@@ -6,7 +6,6 @@ abstract class PieceProvider {
   Piece? operator [](int index);
 
   int get length;
-  Iterable<Piece> get downloadingPieces;
-  final List<Piece> _pieces = [];
-  List<Piece> get pieces => _pieces;
+  Set<int> get downloadingPieces;
+  Map<int, Piece> get pieces;
 }

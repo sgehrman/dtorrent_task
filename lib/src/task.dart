@@ -205,7 +205,7 @@ class _TorrentTask
     _pieceManager ??= PieceManager.createPieceManager(
         BasePieceSelector(), model, _stateFile!.bitfield);
     _fileManager ??= await DownloadFileManager.createFileManager(
-        model, savePath, _stateFile!, _pieceManager!.pieces);
+        model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(
         _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
     return _peersManager!;

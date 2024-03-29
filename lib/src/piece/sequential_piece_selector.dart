@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:dtorrent_task/src/peer/peer.dart';
 
 import 'piece.dart';
@@ -14,10 +13,13 @@ class SequentialPieceSelector implements PieceSelector {
       Peer peer, List<int> remoteHavePieces, PieceProvider provider,
       [bool random = false, Set<int>? suggestPieces]) {
     // Check if the current downloading piece can be used by this peer.
-    var p = provider.pieces.firstWhereOrNull((piece) =>
-        remoteHavePieces.contains(piece.index) &&
-        !piece.isCompleted &&
-        piece.haveAvailableSubPiece());
-    return p;
+    // TODO: sort remoteHavePieces
+    for (var remoteHavePiece in remoteHavePieces) {
+      var p = provider.pieces[remoteHavePiece];
+      if (p == null) return null;
+      if (!p.isCompleted && p.haveAvailableSubPiece()) return p;
+    }
+
+    return null;
   }
 }

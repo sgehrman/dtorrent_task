@@ -375,6 +375,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     var piece = _pieceProvider[event.index];
     if (piece != null && piece.haveAvailableSubPiece()) {
       piece.addAvailablePeer(event.peer);
+      _pieceManager.processDownloadingPiece(event.index);
       requestPieces(event.peer, event.index);
     }
   }

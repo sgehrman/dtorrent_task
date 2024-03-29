@@ -6,23 +6,22 @@ import '../peer/bitfield.dart';
 import 'piece.dart';
 import 'piece_provider.dart';
 import 'piece_selector.dart';
-import 'package:collection/collection.dart';
 
 class PieceManager
     with EventsEmittable<PieceManagerEvent>
     implements PieceProvider {
   bool _isFirst = true;
 
-  final List<Piece> _pieces = [];
+  final Map<int, Piece> _pieces = {};
 
   @override
-  List<Piece> get pieces => _pieces;
+  Map<int, Piece> get pieces => _pieces;
 
   // final Set<int> _completedPieces = <int>{};
 
+  final Set<int> _downloadingPieces = <int>{};
   @override
-  Iterable<Piece> get downloadingPieces =>
-      _pieces.where((piece) => piece.isDownloading == true);
+  Set<int> get downloadingPieces => _downloadingPieces;
 
   final PieceSelector _pieceSelector;
 
@@ -46,11 +45,12 @@ class PieceManager
       if (bitfield.getBit(i)) {
         var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte,
             isComplete: true);
-        _pieces.add(piece);
+        _pieces[i] = piece;
       } else {
         var piece = Piece(metaInfo.pieces[i], i, byteLength, startbyte);
-        _pieces.add(piece);
+        _pieces[i] = piece;
       }
+
       startbyte = startbyte + byteLength;
     }
   }
@@ -62,8 +62,7 @@ class PieceManager
   /// Because if we modify the bitfield only after downloading, it will cause the remote peer
   /// to request sub-pieces that are not yet present in the file system, leading to errors in data reading.
   void processSubPieceWriteComplete(int pieceIndex, int begin, int length) {
-    var piece =
-        _pieces.firstWhereOrNull((element) => element.index == pieceIndex);
+    var piece = pieces[pieceIndex];
     if (piece != null) {
       piece.subPieceWriteComplete(begin);
       if (piece.isCompleted) _processCompletePiece(pieceIndex);
@@ -75,15 +74,20 @@ class PieceManager
     var piece = _pieceSelector.selectPiece(
         peer, remoteHavePieces, this, _isFirst, suggestPieces);
     _isFirst = false;
+    if (piece != null) processDownloadingPiece(piece.index);
     return piece;
   }
 
+  void processDownloadingPiece(int pieceIndex) {
+    _downloadingPieces.add(pieceIndex);
+  }
+
   /// After completing a piece, some processing is required:
+  /// - Remove it from the _downloadingPieces list.
   /// - Notify the listeners.
   void _processCompletePiece(int index) {
-    try {
-      events.emit(PieceWriteCompleted(index));
-    } catch (e) {}
+    _downloadingPieces.remove(index);
+    events.emit(PieceWriteCompleted(index));
   }
 
   bool _disposed = false;
@@ -94,15 +98,16 @@ class PieceManager
     if (isDisposed) return;
     events.dispose();
     _disposed = true;
-    for (var piece in _pieces) {
-      piece.dispose();
-    }
+    pieces.forEach((key, value) {
+      value.dispose();
+    });
     _pieces.clear();
+    _downloadingPieces.clear();
   }
 
   @override
   Piece? operator [](index) {
-    return _pieces.firstWhereOrNull((element) => element.index == index);
+    return pieces[index];
   }
 
   // @override

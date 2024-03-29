@@ -133,7 +133,7 @@ class TorrentStream
     _pieceManager ??= PieceManager.createPieceManager(
         pieceSelector, model, _stateFile!.bitfield);
     _fileManager ??= await DownloadFileManager.createFileManager(
-        model, savePath, _stateFile!, _pieceManager!.pieces);
+        model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(
         _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
     _streamingServer ??= StreamingServer(_fileManager!, this);
