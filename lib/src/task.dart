@@ -380,6 +380,7 @@ class _TorrentTask
     fileManagerListener?.dispose();
     peersManagerListener?.dispose();
     lsdListener?.dispose();
+    _dhtListener?.dispose();
     // This is in order, first stop the tracker, then stop listening on the server socket and all peers, finally close the file system.
     await _tracker?.dispose();
     _tracker = null;

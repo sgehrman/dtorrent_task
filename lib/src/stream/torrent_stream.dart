@@ -80,6 +80,7 @@ class TorrentStream
   EventsListener<PeersManagerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
   EventsListener<LSDEvent>? lsdListener;
+  EventsListener<DHTEvent>? _dhtListener;
 
   TorrentStream(this._metaInfo, this._savePath) {
     _peerId = generatePeerId();
@@ -326,13 +327,15 @@ class TorrentStream
       ..on<StateFileUpdated>((event) => events.emit(StateFileUpdated()));
 
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
+    _lsd?.port = _serverSocket?.port;
 
     _lsd?.start();
-
-    // _dht?.announce(
-    //     String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
-    // _dht?.onNewPeer(_processDHTPeer);
-    // _dht?.bootstrap();
+    _dhtListener = _dht?.createListener();
+    _dhtListener?.on<NewPeerEvent>(
+        (event) => _processDHTPeer(event.address, event.infoHash));
+    _dht?.announce(
+        String.fromCharCodes(_metaInfo.infoHashBuffer), _serverSocket!.port);
+    _dht?.bootstrap();
     if (_fileManager != null && _fileManager!.isAllComplete) {
       _tracker?.complete();
     } else {
@@ -358,6 +361,7 @@ class TorrentStream
     fileManagerListener?.dispose();
     peersManagerListener?.dispose();
     lsdListener?.dispose();
+    _dhtListener?.dispose();
     // This is in order, first stop the tracker, then stop listening on the server socket and all peers, finally close the file system.
     await _tracker?.dispose();
     _tracker = null;

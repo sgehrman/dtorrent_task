@@ -439,6 +439,7 @@ abstract class Peer
         length = ByteData.view(lengthBuffer.buffer).getInt32(0, Endian.big);
       }
       if (piecesMessage != null && piecesMessage.isNotEmpty) {
+        // we shoud validate that the subpiece length is valid/same as what we requested
         Timer.run(() => _processReceivePieces(piecesMessage!));
       }
       if (haveMessages != null && haveMessages.isNotEmpty) {
