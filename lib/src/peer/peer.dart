@@ -1280,7 +1280,7 @@ class _TCPPeer extends Peer {
     } catch (e) {
       // do nothing
     } finally {
-      return super.dispose(reason);
+      super.dispose(reason);
     }
   }
 }
