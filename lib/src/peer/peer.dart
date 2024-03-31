@@ -1275,6 +1275,7 @@ class _TCPPeer extends Peer {
   Future dispose([reason]) async {
     try {
       await _socket?.close();
+      _socket?.destroy();
       _socket = null;
     } catch (e) {
       // do nothing
