@@ -142,7 +142,7 @@ abstract class Peer
   bool _bitfieldSended = false;
 
   /// Remote data reception, listening to subscription.
-  StreamSubscription? _streamChunk;
+  StreamSubscription<Uint8List>? _streamChunk;
 
   /// Buffer to obtain data from the channel.
   List<int> _cacheBuffer = [];
@@ -363,14 +363,14 @@ abstract class Peer
     return _requestBuffer.isNotEmpty;
   }
 
-  void _processReceiveData(dynamic data) {
+  void _processReceiveData(Uint8List data) {
     // Regardless of what message is received, as long as it is not empty, reset the countdown timer.
-    if (data != null && data.isNotEmpty) _startToCountdown();
+    if (data.isNotEmpty) _startToCountdown();
     // if (data.isNotEmpty) log('Received data: $data');
-    if (data != null) {
-      _cacheBuffer.addAll(
-          data); // Accept data sent by the remote peer and buffer it in one place.
-    }
+
+    // Accept data sent by the remote peer and buffer it in one place.
+    _cacheBuffer.addAll(data);
+
     if (_cacheBuffer.isEmpty) return;
     // Check if it's a handshake header.
     if (_cacheBuffer[0] == 19 &&
@@ -383,7 +383,7 @@ abstract class Peer
           _cacheBuffer = _cacheBuffer.sublist(HAND_SHAKE_MESSAGE_LENGTH);
           Timer.run(() => _processHandShake(handshakeBuffer));
           if (_cacheBuffer.isNotEmpty) {
-            Timer.run(() => _processReceiveData(null));
+            Timer.run(() => _processReceiveData(Uint8List(0)));
           }
           return;
         } else {
@@ -808,7 +808,7 @@ abstract class Peer
   /// [timeout] default value is 30 seconds
   /// Different type peer use different protocol , such as TCP,uTP,
   /// so this method should be implemented by sub-class
-  Future<Stream?> connectRemote(int timeout);
+  Future<Stream<Uint8List>?> connectRemote(int timeout);
 
   /// Send message to remote
   ///
@@ -1251,7 +1251,7 @@ class _TCPPeer extends Peer {
             localEnableFastPeer: enableFast);
 
   @override
-  Future<Stream?> connectRemote(int? timeout) async {
+  Future<Stream<Uint8List>?> connectRemote(int? timeout) async {
     timeout ??= 30;
     try {
       _socket ??= await Socket.connect(address.address, address.port,
@@ -1308,7 +1308,7 @@ class _UTPPeer extends Peer {
             localEnableFastPeer: enableFast);
 
   @override
-  Future<Stream?> connectRemote(int timeout) async {
+  Future<Stream<Uint8List>?> connectRemote(int timeout) async {
     if (_socket != null) return _socket;
     _client ??= UTPSocketClient();
     _socket = await _client?.connect(address.address, address.port);
