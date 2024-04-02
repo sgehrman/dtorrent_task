@@ -83,7 +83,11 @@ class MetadataDownloader
     _init();
   }
   Future<void> _init() async {
-    localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
+    try {
+      localExternalIP = InternetAddress.tryParse(await Ipify.ipv4());
+    } catch (e) {
+      // do nothing
+    }
   }
 
   Future<void> startDownload() async {
