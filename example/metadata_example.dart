@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -28,53 +27,56 @@ void main(List<String> args) async {
   var trackerListener = tracker.createListener();
 
   // When metadata contents download complete , it will send this event and stop itself:
-  metadataListener.on<MetaDataDownloadComplete>((event) async {
-    tracker.stop(true);
-    var msg = decode(Uint8List.fromList(event.data));
-    Map<String, dynamic> torrent = {};
-    torrent['info'] = msg;
-    var torrentModel = parseTorrentFileContent(torrent);
-    if (torrentModel != null) {
-      print('complete , info : ${torrentModel.name}');
-      var startTime = DateTime.now().millisecondsSinceEpoch;
-      var task =
-          TorrentTask.newTask(torrentModel, path.join(scriptDir, '..', 'tmp'));
-      Timer? timer;
-      EventsListener<TaskEvent> listener = task.createListener();
-      listener
-        ..on<TaskCompleted>((event) {
-          print(
-              'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
-          timer?.cancel();
-          task.stop();
-        })
-        ..on<TaskStopped>(((event) {
-          print('Task Stopped');
-        }));
+  metadataListener
+    ..on<MetaDataDownloadProgress>(
+        (event) => print('MetaDataDownload progress: ${event.progress}'))
+    ..on<MetaDataDownloadComplete>((event) async {
+      tracker.stop(true);
+      var msg = decode(Uint8List.fromList(event.data));
+      Map<String, dynamic> torrent = {};
+      torrent['info'] = msg;
+      var torrentModel = parseTorrentFileContent(torrent);
+      if (torrentModel != null) {
+        print('complete , info : ${torrentModel.name}');
+        var startTime = DateTime.now().millisecondsSinceEpoch;
+        var task = TorrentTask.newTask(
+            torrentModel, path.join(scriptDir, '..', 'tmp'));
+        EventsListener<TaskEvent> listener = task.createListener();
+        listener
+          ..on<TaskCompleted>((event) {
+            print(
+                'Complete! spend time : ${((DateTime.now().millisecondsSinceEpoch - startTime) / 60000).toStringAsFixed(2)} minutes');
 
-      timer = Timer.periodic(Duration(seconds: 2), (timer) async {
-        var progress = '${(task.progress * 100).toStringAsFixed(2)}%';
-        var ads =
-            ((task.averageDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
-        var aps = ((task.averageUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
-        var ds = ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
-        var ps = ((task.uploadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            task.stop();
+          })
+          ..on<TaskStopped>(((event) {
+            print('Task Stopped');
+          }))
+          ..on<StateFileUpdated>((event) {
+            var progress = '${(task.progress * 100).toStringAsFixed(2)}%';
+            var ads =
+                ((task.averageDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            var aps =
+                ((task.averageUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            var ds =
+                ((task.currentDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            var ps = ((task.uploadSpeed) * 1000 / 1024).toStringAsFixed(2);
 
-        var utpDownloadSpeed =
-            ((task.utpDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
-        var utpUploadSpeed =
-            ((task.utpUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
-        var utpPeerCount = task.utpPeerCount;
+            var utpDownloadSpeed =
+                ((task.utpDownloadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            var utpUploadSpeed =
+                ((task.utpUploadSpeed) * 1000 / 1024).toStringAsFixed(2);
+            var utpPeerCount = task.utpPeerCount;
 
-        var active = task.connectedPeersNumber;
-        var seeders = task.seederNumber;
-        var all = task.allPeersNumber;
-        print(
-            'Progress : $progress , Peers:($active/$seeders/$all)($utpPeerCount) . Download speed : ($utpDownloadSpeed)($ads/$ds)kb/s , upload speed : ($utpUploadSpeed)($aps/$ps)kb/s');
-      });
-      await task.start();
-    }
-  });
+            var active = task.connectedPeersNumber;
+            var seeders = task.seederNumber;
+            var all = task.allPeersNumber;
+            print(
+                'Progress : $progress , Peers:($active/$seeders/$all)($utpPeerCount) . Download speed : ($utpDownloadSpeed)($ads/$ds)kb/s , upload speed : ($utpUploadSpeed)($aps/$ps)kb/s');
+          });
+        await task.start();
+      }
+    });
 
   var u8List = Uint8List.fromList(metadata.infoHashBuffer);
   trackerListener.on<AnnouncePeerEventEvent>((event) {

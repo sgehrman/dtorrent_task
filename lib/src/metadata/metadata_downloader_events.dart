@@ -6,3 +6,10 @@ class MetaDataDownloadComplete implements MetadataDownloaderEvent {
     this.data,
   );
 }
+
+class MetaDataDownloadProgress implements MetadataDownloaderEvent {
+  num progress;
+  MetaDataDownloadProgress(
+    this.progress,
+  );
+}

@@ -23,7 +23,7 @@ class MetadataDownloader
         Holepunch,
         PEX,
         MetaDataMessenger,
-        EventsEmittable<MetaDataDownloadComplete>
+        EventsEmittable<MetadataDownloaderEvent>
     implements AnnounceOptionsProvider {
   final List<InternetAddress> IGNORE_IPS = [
     InternetAddress.tryParse('0.0.0.0')!,
@@ -269,6 +269,7 @@ class MetadataDownloader
       if (index != null) {
         var msg = decode(data, start: 0, end: index + 1);
         if (msg['msg_type'] == 1) {
+          // Piece message
           var piece = msg['piece'];
           if (piece != null && piece < _metaDataBlockNum) {
             var timer = _requestTimeout.remove(remotePeerId);
@@ -278,6 +279,7 @@ class MetadataDownloader
           }
         }
         if (msg['msg_type'] == 2) {
+          //  Reject piece
           var piece = msg['piece'];
           if (piece != null && piece < _metaDataBlockNum) {
             _metaDataPieces.add(piece); //Return rejected piece
@@ -301,6 +303,7 @@ class MetadataDownloader
     var started = piece * 16 * 1024;
     List.copyRange(_infoDatas, started, bytes, start);
     _completedPieces.add(piece);
+    events.emit(MetaDataDownloadProgress(progress));
     if (_completedPieces.length >= _metaDataBlockNum!) {
       // At this point, stop and emit the event
       await stop();
