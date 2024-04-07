@@ -5,8 +5,10 @@ import 'dart:typed_data';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
+import 'package:dtorrent_task/src/httpserver/server.dart';
 import 'package:dtorrent_task/src/lsd/lsd_events.dart';
 import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
+import 'package:dtorrent_task/src/piece/sequential_piece_selector.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
@@ -28,8 +30,9 @@ const MAX_IN_PEERS = 10;
 enum TaskState { running, paused, stopped }
 
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
-  factory TorrentTask.newTask(Torrent metaInfo, String savePath) {
-    return _TorrentTask(metaInfo, savePath);
+  factory TorrentTask.newTask(Torrent metaInfo, String savePath,
+      [bool stream = false]) {
+    return _TorrentTask(metaInfo, savePath, stream);
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
   Torrent get metaInfo;
@@ -73,13 +76,21 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   double get progress;
 
   /// Start to download
-  Future start();
+  Future<Map> start();
+
+  // Start streaming videos
+  Future<void> startStreaming();
 
   /// Stop this task
   Future stop();
 
+  // Dispose task object
+
+  Future<void> dispose();
+
   abstract TaskState state;
   Iterable<Peer>? get activePeers;
+  PieceManager? get pieceManager;
 
   /// Pause task
   void pause();
@@ -97,6 +108,12 @@ abstract class TorrentTask with EventsEmittable<TaskEvent> {
   /// Add known Peer addresses.
   void addPeer(CompactAddress address, PeerSource source,
       {PeerType? type, Socket socket});
+
+  Stream<List<int>>? createStream({
+    int filePosition = 0,
+    int? endPosition,
+    String? fileName,
+  });
 }
 
 class _TorrentTask
@@ -119,9 +136,15 @@ class _TorrentTask
 
   PieceManager? _pieceManager;
 
+  PieceManager? get pieceManager => _pieceManager;
+
   DownloadFileManager? _fileManager;
 
   PeersManager? _peersManager;
+
+  StreamingServer? _streamingServer;
+
+  bool stream;
 
   @override
   Iterable<Peer>? get activePeers => _peersManager?.activePeers;
@@ -153,7 +176,7 @@ class _TorrentTask
   EventsListener<LSDEvent>? lsdListener;
   EventsListener<DHTEvent>? _dhtListener;
 
-  _TorrentTask(this._metaInfo, this._savePath) {
+  _TorrentTask(this._metaInfo, this._savePath, [this.stream = false]) {
     _peerId = generatePeerId();
   }
 
@@ -203,12 +226,75 @@ class _TorrentTask
     _tracker ??= TorrentAnnounceTracker(this);
     _stateFile ??= await StateFile.getStateFile(savePath, model);
     _pieceManager ??= PieceManager.createPieceManager(
-        BasePieceSelector(), model, _stateFile!.bitfield);
+        stream ? SequentialPieceSelector() : BasePieceSelector(),
+        model,
+        _stateFile!.bitfield);
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
     _peersManager ??= PeersManager(
         _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
+
     return _peersManager!;
+  }
+
+  void initStreaming() {
+    _streamingServer ??= StreamingServer(_fileManager!, this);
+  }
+
+  @override
+  Future<void> startStreaming() async {
+    initStreaming();
+    await _init(_metaInfo, _savePath);
+    for (var file in _fileManager!.files) {
+      await file.requestFlush();
+    }
+    if (!_streamingServer!.running) {
+      await _streamingServer?.start().then((event) => events.emit(event));
+    }
+  }
+
+  @override
+  Stream<List<int>>? createStream(
+      {int filePosition = 0, int? endPosition, String? fileName}) {
+    if (_fileManager == null || _peersManager == null) return null;
+    TorrentFile? file;
+    if (fileName != null) {
+      file = _fileManager!.metainfo.files
+          .firstWhere((file) => file.name == fileName);
+    } else {
+      file = _fileManager!.metainfo.files.firstWhere(
+        (file) => file.name.contains('mp4'),
+        orElse: () => _fileManager!.metainfo.files.first,
+      );
+    }
+    var localFile = _fileManager?.files.firstWhere(
+        (downloadedFile) => downloadedFile.originalFileName == file?.name);
+
+    if (localFile == null) return null;
+    // if no end position provided, read all file
+    endPosition ??= file.length;
+
+    var offsetStart = file.offset + filePosition;
+    var offsetEnd = file.offset + endPosition;
+
+    var startPiece = getPiece(localFile.pieces, offsetStart);
+    var endPiece = getPiece(localFile.pieces, offsetEnd);
+    if (startPiece == null || endPiece == null) return null;
+    // TODO: ineffecient
+    final requiredPieces = localFile.pieces.sublist(
+        localFile.pieces.indexOf(startPiece),
+        localFile.pieces.indexOf(endPiece) + 1);
+
+    for (var piece in requiredPieces) {
+      for (var peer in piece.availablePeers) {
+        _peersManager?.requestPieces(peer, piece.index);
+      }
+    }
+
+    var stream = localFile.createStream(filePosition, endPosition);
+    if (stream == null) return null;
+
+    return stream;
   }
 
   @override
@@ -314,7 +400,7 @@ class _TorrentTask
   }
 
   @override
-  Future start() async {
+  Future<Map> start() async {
     state = TaskState.running;
     // Incoming peer:
     _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
@@ -368,11 +454,12 @@ class _TorrentTask
   @override
   Future stop([bool force = false]) async {
     await _tracker?.stop(force);
+    await _streamingServer?.stop();
     events.emit(TaskStopped());
     await dispose();
   }
 
-  Future dispose() async {
+  Future<void> dispose() async {
     events.dispose();
     _dhtRepeatTimer?.cancel();
     _dhtRepeatTimer = null;
@@ -398,6 +485,8 @@ class _TorrentTask
     _lsd = null;
     _peerIds.clear();
     _comingIp.clear();
+    _streamingServer?.stop();
+
     state = TaskState.stopped;
     return;
   }

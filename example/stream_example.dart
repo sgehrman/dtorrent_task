@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/stream/torrent_stream.dart';
+import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:path/path.dart' as path;
@@ -16,7 +16,7 @@ Future<void> main(List<String> args) async {
   var savePath = path.join(scriptDir, '..', 'tmp');
   var model = await Torrent.parse(torrentFile);
   // model.announces.clear();
-  var task = TorrentStream(model, savePath);
+  var task = TorrentTask.newTask(model, savePath, true);
   Timer? timer;
   Timer? timer1;
   var startTime = DateTime.now().millisecondsSinceEpoch;
@@ -33,6 +33,7 @@ Future<void> main(List<String> args) async {
       print('Task Stopped');
     }));
   var map = await task.start();
+  await task.startStreaming();
 
   print(map);
 

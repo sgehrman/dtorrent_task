@@ -61,7 +61,7 @@ Stream<T> streamDelayer<T>(Stream<T> inputStream, Duration delay) async* {
 class StreamingServer {
   final DownloadFileManager _fileManager;
   HttpServer? _server;
-  final TorrentStream _torrentStream;
+  final TorrentTask _torrentTask;
   StreamSubscription<HttpRequest>? _streamSubscription;
   InternetAddress address = InternetAddress.anyIPv4;
   int port;
@@ -69,7 +69,7 @@ class StreamingServer {
 
   StreamingServer(
     this._fileManager,
-    this._torrentStream, {
+    this._torrentTask, {
     InternetAddress? address,
     this.port = 9090,
   }) : address = address ?? InternetAddress.anyIPv4;
@@ -100,10 +100,10 @@ class StreamingServer {
       'totalLength': _fileManager.metainfo.length,
       'downloaded': _fileManager.downloaded,
       // 'uploaded':_fileManager.uploaded,
-      'downloadSpeed': _torrentStream.averageDownloadSpeed,
-      'uploadSpeed': _torrentStream.averageUploadSpeed,
-      'totalPeers': _torrentStream.allPeersNumber,
-      'activePeers': _torrentStream.activePeers?.length ?? 0,
+      'downloadSpeed': _torrentTask.averageDownloadSpeed,
+      'uploadSpeed': _torrentTask.averageUploadSpeed,
+      'totalPeers': _torrentTask.allPeersNumber,
+      'activePeers': _torrentTask.activePeers?.length ?? 0,
       'files': files.map(toJsonEntry).toList()
     };
   }
@@ -200,7 +200,7 @@ class StreamingServer {
       request.response.headers.add('Content-Range',
           'bytes ${ranges.ranges[0].start}-${ranges.ranges[0].end}/${file.length}');
     }
-    bytes = _torrentStream.createStream(
+    bytes = _torrentTask.createStream(
         filePosition: startPosition,
         endPosition: endPosition,
         fileName: file.name);

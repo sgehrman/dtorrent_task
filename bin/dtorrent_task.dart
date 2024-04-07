@@ -48,11 +48,12 @@ void main(List<String> mainArgs) async {
   }
   var torrent = await Torrent.parse(filePath);
   TorrentTask task;
+  bool stream = false;
   if (args['task-type'] == 'stream') {
-    task = TorrentStream(torrent, saveDir);
-  } else {
-    task = TorrentTask.newTask(torrent, saveDir);
+    stream = true;
   }
+  task = TorrentTask.newTask(torrent, saveDir, stream);
+
   var listener = task.createListener();
   listener
     ..on<StreamingServerStarted>(
@@ -85,4 +86,7 @@ void main(List<String> mainArgs) async {
     );
 
   await task.start();
+  if (stream) {
+    await task.startStreaming();
+  }
 }
