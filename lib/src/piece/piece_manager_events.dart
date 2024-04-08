@@ -1,8 +1,14 @@
 abstract class PieceManagerEvent {}
 
-class PieceWriteCompleted implements PieceManagerEvent {
+class PieceAccepted implements PieceManagerEvent {
   int pieceIndex;
-  PieceWriteCompleted(
+  PieceAccepted(
     this.pieceIndex,
   );
+}
+
+class PieceRejected implements PieceManagerEvent {
+  final int index;
+
+  PieceRejected(this.index);
 }

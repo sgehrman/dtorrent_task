@@ -178,7 +178,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   ///
   /// The Sub Piece is from the Piece corresponding to [pieceIndex], and the content is [block] starting from [begin].
   /// This class does not validate if the written Sub Piece is a duplicate; it simply overwrites the previous content.
-  void writeFile(int pieceIndex, int begin, List<int> block) {
+  Future<bool> writeFile(int pieceIndex, int begin, List<int> block) async {
     var tempFiles = _piece2fileMap?[pieceIndex];
     // TODO: Does this work for last piece?
     // this is the start position relative to  start of the entire torrent block
@@ -186,7 +186,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     var blockSize = block.length;
     // this is the end position relative to  start of the entire torrent block
     var endByte = startByte + blockSize;
-    if (tempFiles == null || tempFiles.isEmpty) return;
+    if (tempFiles == null || tempFiles.isEmpty) return false;
     var futures = <Future<bool>>[];
     for (var i = 0; i < tempFiles.length; i++) {
       var tempFile = tempFiles[i];
@@ -196,16 +196,17 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       futures.add(tempFile.requestWrite(
           re.position, block, re.blockStart, re.blockEnd));
     }
-    Stream.fromFutures(futures).fold<bool>(true, (p, a) {
+    var written = await Stream.fromFutures(futures).fold<bool>(true, (p, a) {
       return p && a;
-    }).then((result) {
-      if (result) {
-        events.emit(SubPieceWriteCompleted(pieceIndex, begin, blockSize));
-      } else {
-        events.emit(SubPieceWriteFailed(pieceIndex, begin, blockSize));
-      }
     });
-    return;
+
+    if (written) {
+      events.emit(SubPieceWriteCompleted(pieceIndex, begin, blockSize));
+    } else {
+      events.emit(SubPieceWriteFailed(pieceIndex, begin, blockSize));
+    }
+
+    return written;
   }
 
   Future close() async {

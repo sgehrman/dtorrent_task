@@ -92,11 +92,11 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       [this.maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE]) {
     // hook FileManager and PieceManager
     fileManagerListener = _fileManager.createListener();
-    fileManagerListener
-      ?..on<SubPieceWriteCompleted>(_processSubPieceWriteComplete)
-      ..on<SubPieceReadCompleted>(readSubPieceComplete);
+    fileManagerListener?..on<SubPieceReadCompleted>(readSubPieceComplete);
     piecesManagerListener = _pieceManager.createListener();
-    piecesManagerListener?.on<PieceWriteCompleted>(_processPieceWriteComplete);
+    piecesManagerListener
+      ?..on<PieceAccepted>(_processPieceAccepted)
+      ..on<PieceRejected>((event) => _pieceRejected(event.index));
     _init();
     // Start pex interval
     startPEX();
@@ -285,32 +285,29 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     }
   }
 
-  void _processSubPieceWriteComplete(SubPieceWriteCompleted event) {
-    _pieceManager.processSubPieceWriteComplete(
-        event.pieceIndex, event.begin, event.length);
+  void _pieceRejected(int index) {
+    var piece = _pieceProvider[index];
+    if (piece == null) return;
+
+    // TODO: still need optimizing for last pieces
+    for (var peer in piece.availablePeers) {
+      requestPieces(peer, piece.index);
+    }
   }
 
-  void _processPieceWriteComplete(PieceWriteCompleted event) async {
-    Piece? piece = _pieceManager[event.pieceIndex];
-    if (piece == null) return;
-    var block = await _fileManager.readFile(piece.index, 0, piece.byteLength);
-    if (block == null) return;
-    var digest = sha1.convert(block);
-    if (digest.toString() != piece.hashString) {
-      log('Piece ${piece.index} is rejected', name: runtimeType.toString());
-      for (var subPiece in {...piece.downloadedSubPieces}) {
-        piece.pushSubPieceBack(subPiece);
-      }
-      // TODO: still need optimizing for last pieces
-      for (var peer in piece.availablePeers) {
-        requestPieces(peer, piece.index);
-      }
+  void _processPieceAccepted(PieceAccepted event) async {
+    var piece = _pieceManager[event.pieceIndex];
+    if (piece == null || piece.block == null) return;
 
-      return;
-    } else {
-      log('Piece ${piece.index} is accepted', name: runtimeType.toString());
-    }
     if (_fileManager.localHave(event.pieceIndex)) return;
+    var written = await _fileManager.writeFile(
+      event.pieceIndex,
+      0,
+      piece.block!,
+    );
+
+    if (!written) return;
+    _pieceManager.processPieceWriteComplete(event.pieceIndex);
     await _fileManager.updateBitfield(event.pieceIndex);
     for (var peer in _activePeers) {
       // if (!peer.remoteHave(index)) {
@@ -509,9 +506,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
       // TODO: improve
       if (!piece.isCompleted) {
-        Timer.run(() =>
-            _fileManager.writeFile(event.index, event.begin, event.block));
-        piece.subPieceDownloadComplete(event.begin);
+        events.emit(RecievedBlock(event.index, event.begin, event.block));
       }
       if (piece.haveAvailableSubPiece()) i = -1;
     }

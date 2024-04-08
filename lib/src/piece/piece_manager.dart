@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/peer/peer.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
@@ -61,11 +63,10 @@ class PieceManager
   ///
   /// Because if we modify the bitfield only after downloading, it will cause the remote peer
   /// to request sub-pieces that are not yet present in the file system, leading to errors in data reading.
-  void processSubPieceWriteComplete(int pieceIndex, int begin, int length) {
+  void processPieceWriteComplete(int pieceIndex) {
     var piece = pieces[pieceIndex];
     if (piece != null) {
-      piece.subPieceWriteComplete(begin);
-      if (piece.isCompleted) _processCompletePiece(pieceIndex);
+      piece.writeComplete();
     }
   }
 
@@ -82,12 +83,31 @@ class PieceManager
     _downloadingPieces.add(pieceIndex);
   }
 
+  void processReceivedBlock(int index, int begin, List<int> block) {
+    var piece = pieces[index];
+    if (piece != null) {
+      piece.block?.setRange(begin, begin + block.length, block);
+      piece.subPieceDownloadComplete(begin);
+      if (piece.isCompleted) _processCompletePieceDownload(index);
+    }
+  }
+
   /// After completing a piece, some processing is required:
   /// - Remove it from the _downloadingPieces list.
   /// - Notify the listeners.
-  void _processCompletePiece(int index) {
+  void _processCompletePieceDownload(int index) {
+    var piece = pieces[index];
+    if (piece == null) return;
+
+    if (!piece.validatePiece()) {
+      log('Piece ${piece.index} is rejected', name: runtimeType.toString());
+      events.emit(PieceRejected(index));
+      return;
+    }
+    log('Piece ${piece.index} is accepted', name: runtimeType.toString());
+
     _downloadingPieces.remove(index);
-    events.emit(PieceWriteCompleted(index));
+    events.emit(PieceAccepted(index));
   }
 
   bool _disposed = false;

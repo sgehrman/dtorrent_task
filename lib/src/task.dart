@@ -426,7 +426,12 @@ class _TorrentTask
     lsdListener = _lsd?.createListener();
     trackerListener?.on<AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
-    peersManagerListener?.on<AllComplete>(_whenTaskDownloadComplete);
+    peersManagerListener
+      ?..on<AllComplete>(_whenTaskDownloadComplete)
+      ..on<RecievedBlock>(
+        (event) => pieceManager?.processReceivedBlock(
+            event.index, event.begin, event.block),
+      );
     fileManagerListener
       ?..on<DownloadManagerFileCompleted>(_whenFileDownloadComplete)
       ..on<StateFileUpdated>((event) => events.emit(StateFileUpdated()));

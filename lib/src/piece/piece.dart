@@ -1,4 +1,7 @@
 import 'dart:collection';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 
 import '../peer/peer.dart';
 import '../utils.dart';
@@ -9,10 +12,12 @@ class Piece {
   final int byteLength;
 
   final int index;
-// the offset of the piece from the start of the torrent block
+  // the offset of the piece from the start of the torrent block
   final int offset;
-// the offseted end position relative to the torrent block
+  // the offseted end position relative to the torrent block
   int get end => offset + byteLength;
+
+  Uint8List? block;
 
   final Set<Peer> _availablePeers = <Peer>{};
   Set<Peer> get availablePeers => _availablePeers;
@@ -20,7 +25,6 @@ class Piece {
   late Queue<int> _subPiecesQueue;
 
   final Set<int> _downloadedSubPieces = <int>{};
-  Set<int> get downloadedSubPieces => _downloadedSubPieces;
 
   final Set<int> _writingSubPieces = <int>{};
 
@@ -39,7 +43,8 @@ class Piece {
   Piece(this.hashString, this.index, this.byteLength, this.offset,
       {int requestLength = DEFAULT_REQUEST_LENGTH, bool isComplete = false})
       : _subPieceSize = requestLength,
-        _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength {
+        _subPiecesCount = (byteLength + requestLength - 1) ~/ requestLength,
+        block = Uint8List(byteLength) {
     if (requestLength <= 0) {
       throw Exception('Request length should bigger than zero');
     }
@@ -50,9 +55,7 @@ class Piece {
         Queue.from(List.generate(_subPiecesCount, (index) => index));
     if (isComplete) {
       flushed = true;
-      for (var subPiece in _subPiecesQueue) {
-        subPieceWriteComplete(subPiece * requestLength);
-      }
+      writeComplete();
     }
   }
 
@@ -131,7 +134,7 @@ class Piece {
 
   bool get isCompleted {
     if (subPiecesCount == 0) return false;
-    return _downloadedSubPieces.length == subPiecesCount;
+    return _writingSubPieces.length == subPiecesCount;
   }
 
   ///
@@ -146,15 +149,14 @@ class Piece {
     return _writingSubPieces.add(subindex);
   }
 
-  bool subPieceWriteComplete(int begin) {
-    var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
-    // _subPiecesQueue.remove(subindex); // Is this possible?
-    _writingSubPieces.remove(subindex);
-    var re = _downloadedSubPieces.add(subindex);
+  bool writeComplete() {
+    clearBlock();
+    _downloadedSubPieces.addAll(_writingSubPieces);
+    _writingSubPieces.clear();
     if (isCompleted) {
       clearAvailablePeer();
     }
-    return re;
+    return true;
   }
 
   ///
@@ -218,6 +220,24 @@ class Piece {
     _downloadedSubPieces.remove(index);
     subPieceQueue.addLast(index);
     return true;
+  }
+
+  bool validatePiece() {
+    if (block == null || block!.length < byteLength || !isCompleted) {
+      throw Exception("Piece is cleared");
+    }
+    var digest = sha1.convert(block!);
+    var valid = digest.toString() == hashString;
+    if (!valid) {
+      for (var subPiece in {..._writingSubPieces}) {
+        pushSubPieceBack(subPiece);
+      }
+    }
+    return valid;
+  }
+
+  void clearBlock() {
+    block = null;
   }
 
   bool _disposed = false;
