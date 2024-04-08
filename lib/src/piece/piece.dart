@@ -24,9 +24,11 @@ class Piece {
 
   late Queue<int> _subPiecesQueue;
 
-  final Set<int> _downloadedSubPieces = <int>{};
+  // pieces that are in memory
+  final Set<int> _inMemorySubPieces = <int>{};
 
-  final Set<int> _writingSubPieces = <int>{};
+  // pieces that were written to disk
+  final Set<int> _onDiskSubPieces = <int>{};
 
   final int _subPiecesCount;
 
@@ -55,7 +57,7 @@ class Piece {
         Queue.from(List.generate(_subPiecesCount, (index) => index));
     if (isComplete) {
       flushed = true;
-      writeComplete();
+      _onDiskSubPieces.addAll(_subPiecesQueue);
     }
   }
 
@@ -63,11 +65,8 @@ class Piece {
     // TODO: Does this work if the requested start is inside the lastpiece?
     // TODO: Simplify and refactor
 
-    var subPieces = {
-      ...subPieceQueue,
-      ..._writingSubPieces,
-      ..._downloadedSubPieces
-    }.toList();
+    var subPieces =
+        {...subPieceQueue, ..._inMemorySubPieces, ..._onDiskSubPieces}.toList();
     subPieces.sort();
 
     var startSubpiece = ((start - offset - 1) ~/ _subPieceSize);
@@ -75,7 +74,7 @@ class Piece {
     var lastByte = start;
     var firstAdded = false;
     for (var subPiece in subPieces.skip(startSubpiece)) {
-      if (_downloadedSubPieces.contains(subPiece)) {
+      if (_onDiskSubPieces.contains(subPiece)) {
         if (subPiece == subPiecesCount - 1) {
           // last piece may have different size
 
@@ -102,23 +101,17 @@ class Piece {
 
   bool get isDownloading {
     if (subPiecesCount == 0) return false;
+    if (isCompletelyDownloaded) return false;
     if (isCompleted) return false;
-    return subPiecesCount !=
-        _downloadedSubPieces.length +
-            _subPiecesQueue.length +
-            _writingSubPieces.length;
+    return _subPiecesQueue.isNotEmpty;
   }
 
   Queue<int> get subPieceQueue => _subPiecesQueue;
 
   double get completed {
     if (subPiecesCount == 0) return 0;
-    return _downloadedSubPieces.length / subPiecesCount;
+    return _onDiskSubPieces.length / subPiecesCount;
   }
-
-  int get downloadedSubPiecesCount => _downloadedSubPieces.length;
-
-  int get writingSubPiecesCount => _writingSubPieces.length;
 
   bool haveAvailableSubPiece() {
     if (_subPiecesCount == 0) return false;
@@ -131,11 +124,21 @@ class Piece {
     if (_subPiecesCount == 0) return 0;
     return _subPiecesQueue.length;
   }
+  // means the pieces are completely validated and on the disk.
 
-  bool get isCompleted {
+  bool get isCompletelyWritten {
     if (subPiecesCount == 0) return false;
-    return _writingSubPieces.length == subPiecesCount;
+    return _onDiskSubPieces.length == subPiecesCount;
   }
+
+  // means the pieces are completely in memory but not validated or written to disk
+  bool get isCompletelyDownloaded {
+    if (subPiecesCount == 0) return false;
+    return _inMemorySubPieces.length == subPiecesCount;
+  }
+
+  // the piece is completed whether it's in the memory or disk
+  bool get isCompleted => isCompletelyDownloaded || isCompletelyWritten;
 
   ///
   /// SubPiece download completed.
@@ -143,19 +146,19 @@ class Piece {
   /// Put the subpiece into the _writingSubPieces queue and mark it as completed.
   /// If the subpiece has already been marked, return false; if it hasn't been marked
   /// yet, mark it as completed and return true.
-  bool subPieceDownloadComplete(int begin) {
+  bool subPieceReceived(int begin, List<int> block) {
+    this.block?.setRange(begin, begin + block.length, block);
     var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
     _subPiecesQueue.remove(subindex);
-    return _writingSubPieces.add(subindex);
+    return _inMemorySubPieces.add(subindex);
   }
 
   bool writeComplete() {
     clearBlock();
-    _downloadedSubPieces.addAll(_writingSubPieces);
-    _writingSubPieces.clear();
-    if (isCompleted) {
-      clearAvailablePeer();
-    }
+    _onDiskSubPieces.addAll(_inMemorySubPieces);
+    _inMemorySubPieces.clear();
+    subPieceQueue.clear();
+    clearAvailablePeer();
     return true;
   }
 
@@ -195,8 +198,8 @@ class Piece {
 
   bool pushSubPiece(int subIndex) {
     if (subPieceQueue.contains(subIndex) ||
-        _writingSubPieces.contains(subIndex) ||
-        _downloadedSubPieces.contains(subIndex)) return false;
+        _inMemorySubPieces.contains(subIndex) ||
+        _onDiskSubPieces.contains(subIndex)) return false;
     subPieceQueue.addFirst(subIndex);
     return true;
   }
@@ -208,28 +211,30 @@ class Piece {
 
   bool pushSubPieceLast(int index) {
     if (subPieceQueue.contains(index) ||
-        _writingSubPieces.contains(index) ||
-        _downloadedSubPieces.contains(index)) return false;
+        _inMemorySubPieces.contains(index) ||
+        _onDiskSubPieces.contains(index)) return false;
     subPieceQueue.addLast(index);
     return true;
   }
 
   bool pushSubPieceBack(int index) {
     if (subPieceQueue.contains(index)) return false;
-    _writingSubPieces.remove(index);
-    _downloadedSubPieces.remove(index);
+    _inMemorySubPieces.remove(index);
+    _onDiskSubPieces.remove(index);
     subPieceQueue.addLast(index);
     return true;
   }
 
   bool validatePiece() {
-    if (block == null || block!.length < byteLength || !isCompleted) {
+    if (block == null ||
+        block!.length < byteLength ||
+        !isCompletelyDownloaded) {
       throw Exception("Piece is cleared");
     }
     var digest = sha1.convert(block!);
     var valid = digest.toString() == hashString;
     if (!valid) {
-      for (var subPiece in {..._writingSubPieces}) {
+      for (var subPiece in {..._inMemorySubPieces}) {
         pushSubPieceBack(subPiece);
       }
     }
@@ -248,8 +253,8 @@ class Piece {
     if (isDisposed) return;
     _disposed = true;
     _availablePeers.clear();
-    _downloadedSubPieces.clear();
-    _writingSubPieces.clear();
+    _inMemorySubPieces.clear();
+    _onDiskSubPieces.clear();
   }
 
   @override

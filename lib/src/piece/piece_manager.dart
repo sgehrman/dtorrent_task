@@ -86,13 +86,13 @@ class PieceManager
   void processReceivedBlock(int index, int begin, List<int> block) {
     var piece = pieces[index];
     if (piece != null) {
-      piece.block?.setRange(begin, begin + block.length, block);
-      piece.subPieceDownloadComplete(begin);
-      if (piece.isCompleted) _processCompletePieceDownload(index);
+      piece.subPieceReceived(begin, block);
+      if (piece.isCompletelyDownloaded) _processCompletePieceDownload(index);
     }
   }
 
   /// After completing a piece, some processing is required:
+  /// - Validate piece
   /// - Remove it from the _downloadingPieces list.
   /// - Notify the listeners.
   void _processCompletePieceDownload(int index) {

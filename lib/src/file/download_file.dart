@@ -61,7 +61,7 @@ class DownloadFile {
     this.pieces,
   ) {
     for (var piece in pieces) {
-      if (piece.isCompleted) {
+      if (piece.isCompletelyWritten) {
         var blockPosition = blockToDownloadFilePosition(
             piece.offset, piece.end, piece.byteLength, this);
         if (blockPosition == null) continue;
