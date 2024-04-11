@@ -14,8 +14,7 @@ import 'piece_selector.dart';
 /// - If multiple Pieces have the same number of available Peers, choose the one with the fewest Sub Pieces remaining.
 class BasePieceSelector implements PieceSelector {
   @override
-  Piece? selectPiece(
-      Peer peer, List<int> remoteHavePieces, PieceProvider provider,
+  Piece? selectPiece(Peer peer, PieceProvider provider,
       [bool random = false, Set<int>? suggestPieces]) {
     // Prioritize downloading Suggest Pieces.
     if (suggestPieces != null && suggestPieces.isNotEmpty) {
@@ -29,7 +28,7 @@ class BasePieceSelector implements PieceSelector {
     // Check if the current downloading piece can be used by this peer.
     var availablePiece = <int>[];
 
-    var candidatePieces = remoteHavePieces;
+    var candidatePieces = peer.remoteCompletePieces;
     for (var i = 0; i < provider.downloadingPieces.length; i++) {
       var p = provider.pieces[provider.downloadingPieces.elementAt(i)];
       if (p == null) continue;

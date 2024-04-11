@@ -9,12 +9,11 @@ import 'piece_selector.dart';
 ///
 class SequentialPieceSelector implements PieceSelector {
   @override
-  Piece? selectPiece(
-      Peer peer, List<int> remoteHavePieces, PieceProvider provider,
+  Piece? selectPiece(Peer peer, PieceProvider provider,
       [bool random = false, Set<int>? suggestPieces]) {
     // Check if the current downloading piece can be used by this peer.
     // TODO: sort remoteHavePieces
-    for (var remoteHavePiece in remoteHavePieces) {
+    for (var remoteHavePiece in peer.remoteCompletePieces) {
       var p = provider.pieces[remoteHavePiece];
       if (p == null) return null;
       if (!p.isCompleted && p.haveAvailableSubPiece()) return p;

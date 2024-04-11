@@ -290,6 +290,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (piece == null) return;
 
     // TODO: still need optimizing for last pieces
+    // TODO: don't request piece from multiple peers
     for (var peer in piece.availablePeers) {
       requestPieces(peer, piece.index);
     }
@@ -372,7 +373,6 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     var piece = _pieceProvider[event.index];
     if (piece != null && piece.haveAvailableSubPiece()) {
       piece.addAvailablePeer(event.peer);
-      _pieceManager.processDownloadingPiece(event.index);
       requestPieces(event.peer, event.index);
     }
   }
@@ -464,15 +464,23 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     }
     Piece? piece;
     if (pieceIndex != -1) {
+      // a specific piece requested
       piece = _pieceProvider[pieceIndex];
+      // if the piece is available but doesn't have available subpiece,
+      // select a different subpiece
       if (piece != null && !piece.haveAvailableSubPiece()) {
-        piece = _pieceManager.selectPiece(peer, peer.remoteCompletePieces,
-            _pieceProvider, peer.remoteSuggestPieces);
+        piece = _pieceManager.selectPiece(
+            peer, _pieceProvider, peer.remoteSuggestPieces);
       }
     } else {
-      piece = _pieceManager.selectPiece(peer, peer.remoteCompletePieces,
-          _pieceProvider, peer.remoteSuggestPieces);
+      // no specific piece requested, select one
+      piece = _pieceManager.selectPiece(
+          peer, _pieceProvider, peer.remoteSuggestPieces);
     }
+
+    // at this point we have a piece that we know is:
+    // - available in the peer
+    // - have subPieces
     if (piece == null) return;
 
     var subIndex = piece.popSubPiece();
@@ -501,15 +509,16 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
         log('Error:',
             error: 'Piece overlaps with next piece',
             name: runtimeType.toString());
-        return;
+        // will request the same piece below
+      } else {
+        if (!piece.isCompleted) {
+          events.emit(RecievedBlock(event.index, event.begin, event.block));
+        }
+        // request available subpiece
+        if (piece.haveAvailableSubPiece()) i = -1;
       }
-
-      // TODO: improve
-      if (!piece.isCompleted) {
-        events.emit(RecievedBlock(event.index, event.begin, event.block));
-      }
-      if (piece.haveAvailableSubPiece()) i = -1;
     }
+
     Timer.run(() => requestPieces(event.peer, i));
   }
 
@@ -559,20 +568,23 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   void _processHaveUpdate(PeerHaveEvent event) {
-    var flag = false;
+    var canRequest = false;
     for (var index in event.indices) {
       if (_pieceProvider[index] == null) continue;
 
       if (!_fileManager.localHave(index)) {
+        // if peer is choking us just send interested
         if (event.peer.chokeMe) {
           event.peer.sendInterested(true);
         } else {
-          flag = true;
+          // not choking us, add the peer to the piece and request below
+          canRequest = true;
           _pieceProvider[index]?.addAvailablePeer(event.peer);
         }
       }
     }
-    if (flag && event.peer.isSleeping) {
+    if (canRequest && event.peer.isSleeping) {
+      // peer doesn't have requests, so we can request
       Timer.run(() => requestPieces(event.peer));
     }
   }
@@ -584,7 +596,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       for (var index in completedPieces) {
         _pieceProvider[index]?.addAvailablePeer(event.peer);
       }
-      // Here, start notifying requests.
+      // Start requesting
       Timer.run(() => requestPieces(event.peer));
     } else {
       var completedPieces = event.peer.remoteCompletePieces;
@@ -604,12 +616,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
   void _processRequestTimeout(Peer peer, List<List<int>> requests) {
     var flag = false;
-    for (var element in requests) {
-      if (element[4] >= 3) {
+    for (var request in requests) {
+      if (request[4] >= 3) {
         flag = true;
-        Timer.run(() => peer.requestCancel(element[0], element[1], element[2]));
-        var index = element[0];
-        var begin = element[1];
+        Timer.run(() => peer.requestCancel(request[0], request[1], request[2]));
+        var index = request[0];
+        var begin = request[1];
         var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
         var piece = _pieceManager[index];
         piece?.pushSubPiece(subindex);
@@ -619,6 +631,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
     if (flag) {
       for (var p in _activePeers) {
         if (p != peer && p.isSleeping) {
+          // TODO: should we request from all peers ?
           Timer.run(() => requestPieces(p));
         }
       }

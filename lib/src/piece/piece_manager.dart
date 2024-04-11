@@ -70,10 +70,9 @@ class PieceManager
     }
   }
 
-  Piece? selectPiece(Peer peer, List<int> remoteHavePieces,
-      PieceProvider provider, final Set<int>? suggestPieces) {
-    var piece = _pieceSelector.selectPiece(
-        peer, remoteHavePieces, this, _isFirst, suggestPieces);
+  Piece? selectPiece(
+      Peer peer, PieceProvider provider, final Set<int>? suggestPieces) {
+    var piece = _pieceSelector.selectPiece(peer, this, _isFirst, suggestPieces);
     _isFirst = false;
     if (piece != null) processDownloadingPiece(piece.index);
     return piece;
