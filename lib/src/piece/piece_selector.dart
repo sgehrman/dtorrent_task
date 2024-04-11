@@ -14,4 +14,6 @@ abstract class PieceSelector {
   ///
   Piece? selectPiece(Peer peer, PieceProvider provider,
       [bool first = false, Set<int>? suggestPieces]);
+
+  void setPriorityPieces(Iterable<int> pieces);
 }

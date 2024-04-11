@@ -27,6 +27,8 @@ class PieceManager
 
   final PieceSelector _pieceSelector;
 
+  PieceSelector get pieceSelector => _pieceSelector;
+
   PieceManager(this._pieceSelector, int piecesNumber);
 
   static PieceManager createPieceManager(

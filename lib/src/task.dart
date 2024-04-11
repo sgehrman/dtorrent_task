@@ -256,7 +256,11 @@ class _TorrentTask
   @override
   Stream<List<int>>? createStream(
       {int filePosition = 0, int? endPosition, String? fileName}) {
-    if (_fileManager == null || _peersManager == null) return null;
+    if (_fileManager == null ||
+        _peersManager == null ||
+        _pieceManager == null) {
+      return null;
+    }
     TorrentFile? file;
     if (fileName != null) {
       file = _fileManager!.metainfo.files
@@ -277,19 +281,11 @@ class _TorrentTask
     var offsetStart = file.offset + filePosition;
     var offsetEnd = file.offset + endPosition;
 
-    var startPiece = getPiece(localFile.pieces, offsetStart);
-    var endPiece = getPiece(localFile.pieces, offsetEnd);
-    if (startPiece == null || endPiece == null) return null;
-    // TODO: ineffecient
-    final requiredPieces = localFile.pieces.sublist(
-        localFile.pieces.indexOf(startPiece),
-        localFile.pieces.indexOf(endPiece) + 1);
+    var startPieceIndex = offsetStart ~/ metaInfo.pieceLength;
+    var endPieceIndex = offsetEnd ~/ metaInfo.pieceLength;
 
-    for (var piece in requiredPieces) {
-      for (var peer in piece.availablePeers) {
-        _peersManager?.requestPieces(peer, piece.index);
-      }
-    }
+    _pieceManager!.pieceSelector.setPriorityPieces(
+        {for (var i = startPieceIndex; i <= endPieceIndex; i++) i});
 
     var stream = localFile.createStream(filePosition, endPosition);
     if (stream == null) return null;

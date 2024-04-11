@@ -13,6 +13,14 @@ import 'piece_selector.dart';
 /// - Choose the Piece with the highest number of available Peers.
 /// - If multiple Pieces have the same number of available Peers, choose the one with the fewest Sub Pieces remaining.
 class BasePieceSelector implements PieceSelector {
+  final Set<int> _priorityPieces = {};
+
+  @override
+  void setPriorityPieces(Iterable<int> pieces) {
+    _priorityPieces.clear();
+    _priorityPieces.addAll(pieces);
+  }
+
   @override
   Piece? selectPiece(Peer peer, PieceProvider provider,
       [bool random = false, Set<int>? suggestPieces]) {
