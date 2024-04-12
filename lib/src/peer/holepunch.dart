@@ -1,12 +1,13 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
+import 'package:logging/logging.dart';
 
 enum HolepunchType { rendezvous, connect, error }
 
+var _log = Logger('HolePunchMixin');
 mixin Holepunch {
   static final MESSAGE_TYPE = [
     HolepunchType.rendezvous,
@@ -44,7 +45,7 @@ mixin Holepunch {
   ///
   /// err_code (4 bytes): <error code as a big-endian 4-byte integer; 0 in non-error messages>
   void parseHolepunchMessage(List<int> data) {
-    log('Parsing holepunch message', name: runtimeType.toString());
+    _log.fine('Parsing holepunch message');
     var type = data[0];
     var ipType = data[1];
     var offset = 0;

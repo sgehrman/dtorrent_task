@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:logging/logging.dart';
 import 'package:mime/mime.dart';
 
 class Range {
@@ -57,6 +57,8 @@ Stream<T> streamDelayer<T>(Stream<T> inputStream, Duration delay) async* {
     await Future.delayed(delay);
   }
 }
+
+var _log = Logger('StreamingServer');
 
 class StreamingServer {
   final DownloadFileManager _fileManager;
@@ -208,11 +210,13 @@ class StreamingServer {
     if (bytes != null) {
       try {
         await request.response.addStream(bytes).then((value) async {
-          log('stream finished', name: runtimeType.toString());
+          _log.fine('stream finished');
           await request.response.close();
         });
       } catch (e) {
-        log('streamed data did not finish', name: runtimeType.toString());
+        _log.fine(
+          'streamed data did not finish',
+        );
       }
     }
     request.response.close();

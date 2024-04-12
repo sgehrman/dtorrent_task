@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
@@ -11,6 +9,7 @@ import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:logging/logging.dart';
 
 import 'peer.dart';
 import '../file/download_file_manager.dart';
@@ -26,6 +25,8 @@ const MAX_ACTIVE_PEERS = 50;
 const MAX_WRITE_BUFFER_SIZE = 10 * 1024 * 1024;
 
 const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024 * 10; // 10 mb
+
+var _log = Logger('PeersManager');
 
 ///
 /// TODO:
@@ -215,8 +216,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
   ///  Add supported extensions here
   void _registerExtended(Peer peer) {
-    log('registering extensions for peer ${peer.address}',
-        name: runtimeType.toString());
+    _log.fine('registering extensions for peer ${peer.address}');
     peer.registerExtend('ut_pex');
     peer.registerExtend('ut_holepunch');
   }
@@ -232,7 +232,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
   }
 
   void _processExtendedMessage(Peer source, String name, dynamic data) {
-    log('Processing Extended Message $name', name: runtimeType.toString());
+    _log.fine('Processing Extended Message $name');
     if (name == 'ut_holepunch') {
       parseHolepunchMessage(data);
     }
@@ -506,9 +506,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
       var blockStart = piece.offset + event.begin;
       var blockEnd = blockStart + event.block.length;
       if (blockEnd > piece.end) {
-        log('Error:',
-            error: 'Piece overlaps with next piece',
-            name: runtimeType.toString());
+        _log.info('Error:', 'Piece overlaps with next piece');
         // will request the same piece below
       } else {
         if (!piece.isCompleted) {
@@ -755,7 +753,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
   @override
   void holePunchConnect(CompactAddress ip) {
-    log("holePunch connect $ip");
+    _log.info("holePunch connect $ip");
     addNewPeerAddress(ip, PeerSource.holepunch, type: PeerType.UTP);
   }
 
@@ -788,12 +786,12 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeersManagerEvent> {
 
   @override
   void holePunchError(String err, CompactAddress ip) {
-    log('holepunch error - $err');
+    _log.info('holepunch error - $err');
   }
 
   @override
   void holePunchRendezvous(CompactAddress ip) {
     // TODO: implement holePunchRendezvous
-    log('Received holePunch Rendezvous from $ip');
+    _log.info('Received holePunch Rendezvous from $ip');
   }
 }

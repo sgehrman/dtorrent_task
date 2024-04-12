@@ -1,11 +1,18 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
+import 'package:logging/logging.dart';
 
 void main(List<String> mainArgs) async {
+  var logFile = File('tmp/dtorrent.log');
+  var logFileAccess = logFile.openWrite(mode: FileMode.append);
+  Logger.root.level = Level.INFO; // defaults to Level.INFO
+  Logger.root.onRecord.listen((record) {
+    logFileAccess.writeln(
+        '[${record.loggerName}] ${record.level.name}: ${record.time}: ${record.message}');
+  });
   var parser = ArgParser();
   parser.addOption(
     'task-type',

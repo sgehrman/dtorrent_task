@@ -1,13 +1,15 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
+import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
 
 const BITFIELD_TYPE = 'bitfield';
 const DOWNLOADED_TYPE = 'downloaded';
 const UPLOADED_TYPE = 'uploaded';
+
+var _log = Logger('StateFile');
 
 ///
 /// Download state save file
@@ -139,8 +141,8 @@ class StateFile {
       await access?.flush();
       c.complete(true);
     } catch (e) {
-      log('Update bitfield piece:[$index],uploaded:$uploaded error :',
-          error: e, name: runtimeType.toString());
+      _log.warning(
+          'Update bitfield piece:[$index],uploaded:$uploaded error :', e);
       c.complete(false);
     }
     return;
@@ -190,8 +192,7 @@ class StateFile {
       await _access?.flush();
       await _access?.close();
     } catch (e) {
-      log('Error while closing the status file: ',
-          error: e, name: runtimeType.toString());
+      _log.warning('Error while closing the status file: ', e);
     } finally {
       _access = null;
       _streamSubscription = null;

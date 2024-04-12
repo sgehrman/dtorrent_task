@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -7,6 +6,9 @@ import 'package:collection/collection.dart';
 import 'package:dtorrent_task/src/file/download_file_requests.dart';
 import 'package:dtorrent_task/src/file/utils.dart';
 import 'package:dtorrent_task/src/piece/piece_base.dart';
+import 'package:logging/logging.dart';
+
+var _log = Logger("DownloadFile");
 
 class DownloadFile {
   // This is the full path of the local file
@@ -175,13 +177,14 @@ class DownloadFile {
     var bytes = await requestRead(start, lengthToRead);
 
     var timeStamp = DateTime.now();
-    log("[$timeStamp] startByte: $start, lengthToRead:$lengthToRead, downloadedBytes: $downloadedBytes");
+    _log.fine(
+        "[$timeStamp] startByte: $start, lengthToRead:$lengthToRead, downloadedBytes: $downloadedBytes");
     if (_hlsStreamController.isClosed) return;
     var leftPosition = start + bytes.length;
     _streamPosition = leftPosition;
 
     _hlsStreamController.add(bytes);
-    log("[$timeStamp] lengthLeft: $_streamLengthLeft");
+    // log("[$timeStamp] lengthLeft: $_streamLengthLeft");
     if (_streamLengthLeft < 1) {
       _hlsStreamController.close();
       _streamPosition = 0;
@@ -219,7 +222,10 @@ class DownloadFile {
       _bytesRequestController.add(null);
       downloadedBytes += request.end - request.start;
     } catch (e) {
-      log('Write file error:', error: e, name: runtimeType.toString());
+      _log.warning(
+        'Write file error:',
+        e,
+      );
       request.completer.complete(false);
     }
   }
@@ -238,7 +244,7 @@ class DownloadFile {
       await _writeAccess?.flush();
       event.completer.complete(true);
     } catch (e) {
-      log('Flush error:', error: e, name: runtimeType.toString());
+      _log.warning('Flush error:', e);
       event.completer.complete(false);
     }
   }
@@ -250,7 +256,7 @@ class DownloadFile {
       var contents = await access.read(request.length);
       request.completer.complete(contents);
     } catch (e) {
-      log('Read file error:', error: e, name: runtimeType.toString());
+      _log.warning('Read file error:', e);
       request.completer.complete(<int>[]);
     }
   }
@@ -304,7 +310,7 @@ class DownloadFile {
       if (!_hlsStreamController.isClosed) _hlsStreamController.close();
       await _bytesRequestSubscription?.cancel();
     } catch (e) {
-      log('Close file error:', error: e, name: runtimeType.toString());
+      _log.warning('Close file error:', e);
     } finally {
       _writeAccess = null;
       _readAccess = null;
@@ -323,7 +329,7 @@ class DownloadFile {
       var r = await temp?.delete();
       return r;
     } catch (e) {
-      log('delete() error: ', error: e, name: runtimeType.toString());
+      _log.warning('delete() error: ', e);
     }
     return null;
   }

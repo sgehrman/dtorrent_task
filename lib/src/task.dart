@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -13,6 +12,7 @@ import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:logging/logging.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'file/download_file_manager.dart';
@@ -28,6 +28,8 @@ const MAX_PEERS = 50;
 const MAX_IN_PEERS = 10;
 
 enum TaskState { running, paused, stopped }
+
+var _log = Logger('TorrentTask');
 
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
   factory TorrentTask.newTask(Torrent metaInfo, String savePath,
@@ -326,14 +328,16 @@ class _TorrentTask
   }
 
   void _processNewPeerFound(CompactAddress url, PeerSource source) {
-    log("Add new peer ${url.toString()} from ${source.name} to peersManager",
-        name: runtimeType.toString());
+    _log.info(
+      "Add new peer ${url.toString()} from ${source.name} to peersManager",
+    );
     _peersManager?.addNewPeerAddress(url, source);
   }
 
   void _processDHTPeer(CompactAddress peer, String infoHash) {
-    log("Got new peer from $peer DHT for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}",
-        name: runtimeType.toString());
+    _log.fine(
+      "Got new peer from $peer DHT for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}",
+    );
     if (infoHash == _infoHashString) {
       _processNewPeerFound(peer, PeerSource.dht);
     }
@@ -348,8 +352,9 @@ class _TorrentTask
       socket.close();
       return;
     }
-    log('incoming connect: ${socket.remoteAddress.address}:${socket.remotePort}',
-        name: runtimeType.toString());
+    _log.info(
+      'incoming connect: ${socket.remoteAddress.address}:${socket.remotePort}',
+    );
     _peersManager?.addNewPeerAddress(
         CompactAddress(socket.remoteAddress, socket.remotePort),
         PeerSource.incoming,
@@ -366,8 +371,9 @@ class _TorrentTask
       socket.close();
       return;
     }
-    log('incoming connect: ${socket.remoteAddress.address}:${socket.remotePort}',
-        name: runtimeType.toString());
+    _log.info(
+      'incoming connect: ${socket.remoteAddress.address}:${socket.remotePort}',
+    );
     _peersManager?.addNewPeerAddress(
         CompactAddress(socket.remoteAddress, socket.remotePort),
         PeerSource.incoming,

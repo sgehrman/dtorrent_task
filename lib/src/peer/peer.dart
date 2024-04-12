@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as dev;
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -9,6 +8,7 @@ import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
 import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:logging/logging.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
 import 'congestion_control.dart';
@@ -86,6 +86,8 @@ abstract class Peer
         ExtendedProcessor,
         CongestionControl,
         SpeedCalculator {
+  late final Logger _log = Logger(runtimeType.toString());
+
   /// Countdown time , when peer don't receive or send any message from/to remote ,
   /// this class will invoke close.
   /// Unit: second
@@ -294,10 +296,10 @@ abstract class Peer
       var stream = await connectRemote(timeout);
       startSpeedCalculator();
       _streamChunk = stream?.listen(_processReceiveData, onDone: () {
-        _log('Connection is closed $address');
+        _log.info('Connection is closed $address');
         dispose(BadException('The remote peer closed the connection'));
       }, onError: (e) {
-        _log('Error happen: $address', e);
+        _log.warning('Error happen: $address', e);
         dispose(e);
       });
       events.emit(PeerConnected(this));
@@ -466,25 +468,25 @@ abstract class Peer
 
   void _processMessage(int? id, Uint8List? message) {
     if (id == null) {
-      _log('process keep alive $address');
+      _log.fine('process keep alive $address');
       events.emit(PeerKeepAlive());
       return;
     } else {
       switch (id) {
         case ID_CHOKE:
-          _log('remote choke me : $address');
+          _log.fine('remote choke me : $address');
           chokeMe = true; // choke message
           return;
         case ID_UNCHOKE:
-          _log('remote unchoke me : $address');
+          _log.fine('remote unchoke me : $address');
           chokeMe = false; // unchoke message
           return;
         case ID_INTERESTED:
-          _log('remote interested me : $address');
+          _log.fine('remote interested me : $address');
           interestedMe = true;
           return; // interested message
         case ID_NOT_INTERESTED:
-          _log('remote not interested me : $address');
+          _log.fine('remote not interested me : $address');
           interestedMe = false;
           return; // not interested message
         // case ID_HAVE:
@@ -497,7 +499,7 @@ abstract class Peer
           if (message != null) initRemoteBitfield(message);
           return; // bitfield message
         case ID_REQUEST:
-          _log('process request from $address');
+          _log.fine('process request from $address');
           if (message != null) _processRemoteRequest(message);
           return; // request message
         // case ID_PIECE:
@@ -505,34 +507,34 @@ abstract class Peer
         //   _processReceivePiece(message);
         //   return; // pieces message
         case ID_CANCEL:
-          _log('process cancel : $address');
+          _log.fine('process cancel : $address');
           if (message != null) _processCancel(message);
           return; // cancel message
         case ID_PORT:
-          _log('process port : $address');
+          _log.fine('process port : $address');
           if (message != null) {
             var port = ByteData.view(message.buffer).getUint16(0);
             _processPortChange(port);
           }
           return; // port message
         case OP_HAVE_ALL:
-          _log('process have all : $address');
+          _log.fine('process have all : $address');
           _processHaveAll();
           return;
         case OP_HAVE_NONE:
-          _log('process have none : $address');
+          _log.fine('process have none : $address');
           _processHaveNone();
           return;
         case OP_SUGGEST_PIECE:
-          _log('process suggest pieces : $address');
+          _log.fine('process suggest pieces : $address');
           if (message != null) _processSuggestPiece(message);
           return;
         case OP_REJECT_REQUEST:
-          _log('process reject request : $address');
+          _log.fine('process reject request : $address');
           if (message != null) _processRejectRequest(message);
           return;
         case OP_ALLOW_FAST:
-          _log('process allow fast : $address');
+          _log.fine('process allow fast : $address');
           if (message != null) _processAllowFast(message);
           return;
         case ID_EXTENDED:
@@ -544,7 +546,7 @@ abstract class Peer
           return;
       }
     }
-    _log('Cannot process the message', 'Unknown message : $message');
+    _log.warning('Cannot process the message', 'Unknown message : $message');
   }
 
   /// Remove a request from the request buffer.
@@ -693,9 +695,7 @@ abstract class Peer
   /// However, consider that it can take several seconds for buffers to drain and messages to propagate once a peer is choked.
   void _processRemoteRequest(Uint8List message) {
     if (_remoteRequestBuffer.length > reqq) {
-      dev.log('Request Error:',
-          error: 'Too many requests from $address',
-          name: runtimeType.toString());
+      _log.warning('Request Error:', 'Too many requests from $address');
       dispose(BadException('Too many requests from $address'));
       return;
     }
@@ -704,8 +704,7 @@ abstract class Peer
     var begin = view.getUint32(4);
     var length = view.getUint32(8);
     if (length > MAX_REQUEST_LENGTH) {
-      dev.log('TOO LARGEt BLOCK',
-          error: 'BLOCK $length', name: runtimeType.toString());
+      _log.warning('TOO LARGE BLOCK', 'BLOCK $length');
       dispose(BadException(
           '$address : request block length larger than limit : $length > $MAX_REQUEST_LENGTH'));
       return;
@@ -749,7 +748,7 @@ abstract class Peer
       var block = Uint8List(blockLength);
       block.setRange(0, blockLength, message, MESSAGE_INTEGER * 2);
       requests.add(request);
-      _log(
+      _log.fine(
           'Received request for Piece ($index, $begin) content, downloaded $downloaded bytes from the current Peer $type $address');
       events.emit(PeerPieceEvent(this, index, begin, block));
     }
@@ -1009,7 +1008,7 @@ abstract class Peer
   /// valid and available piece. Spare bits at the end are set to zero.
   ///
   void sendBitfield(Bitfield bitfield) {
-    _log('Sending bitfile information to the peer: ${bitfield.buffer}');
+    _log.fine('Sending bitfile information to the peer: ${bitfield.buffer}');
     if (_bitfieldSended) return;
     _bitfieldSended = true;
     if (remoteEnableFastPeer && localEnableFastPeer) {
@@ -1031,7 +1030,7 @@ abstract class Peer
   /// index of a piece that has just been successfully downloaded and verified via the hash.
   void sendHave(int index) {
     var bytes = Uint8List(4);
-    _log('Sending have information to the peer: $bytes, $index');
+    _log.fine('Sending have information to the peer: $bytes, $index');
     ByteData.view(bytes.buffer).setUint32(0, index, Endian.big);
     sendMessage(ID_HAVE, bytes);
   }
@@ -1199,14 +1198,6 @@ abstract class Peer
     _countdownTimer?.cancel();
     _countdownTimer = null;
     return re;
-  }
-
-  void _log(String message, [dynamic error]) {
-    if (error != null) {
-      dev.log(message, error: error, name: runtimeType.toString());
-    } else {
-      dev.log(message, name: runtimeType.toString());
-    }
   }
 
   @override

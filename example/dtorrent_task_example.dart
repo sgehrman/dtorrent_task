@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:dtorrent_common/dtorrent_common.dart';
@@ -7,12 +6,13 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
 
 var scriptDir = path.dirname(Platform.script.path);
 var torrentsPath =
     path.canonicalize(path.join(scriptDir, '..', '..', '..', 'torrents'));
-
+var _log = Logger('task_example');
 void main() async {
   try {
     var torrentFile = path.join(torrentsPath, 'big-buck-bunny.torrent');
@@ -42,9 +42,9 @@ void main() async {
         task.startAnnounceUrl(element, model.infoHashBuffer);
       }
     });
-    log('Adding dht nodes');
+    _log.info('Adding dht nodes');
     for (var element in model.nodes) {
-      log('dht node $element');
+      _log.info('dht node $element');
       task.addDHTNode(element);
     }
     print(map);

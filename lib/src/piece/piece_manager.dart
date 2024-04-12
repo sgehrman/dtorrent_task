@@ -1,13 +1,14 @@
-import 'dart:developer';
-
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/peer/peer.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:logging/logging.dart';
 import '../peer/bitfield.dart';
 import 'piece.dart';
 import 'piece_provider.dart';
 import 'piece_selector.dart';
+
+var _log = Logger('PieceManager');
 
 class PieceManager
     with EventsEmittable<PieceManagerEvent>
@@ -101,11 +102,11 @@ class PieceManager
     if (piece == null) return;
 
     if (!piece.validatePiece()) {
-      log('Piece ${piece.index} is rejected', name: runtimeType.toString());
+      _log.fine('Piece ${piece.index} is rejected');
       events.emit(PieceRejected(index));
       return;
     }
-    log('Piece ${piece.index} is accepted', name: runtimeType.toString());
+    _log.fine('Piece ${piece.index} is accepted');
 
     _downloadingPieces.remove(index);
     events.emit(PieceAccepted(index));

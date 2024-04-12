@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:dtorrent_parser/dtorrent_parser.dart';
@@ -7,11 +6,14 @@ import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/file/utils.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
+import 'package:logging/logging.dart';
 import '../peer/peer_base.dart';
 
 import '../piece/piece.dart';
 import 'download_file.dart';
 import 'state_file.dart';
+
+var _log = Logger("DownloadFileManager");
 
 class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   final Torrent metainfo;
@@ -111,7 +113,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     events.emit(StateFileUpdated());
     var msg =
         'downloaded：${d / (1024 * 1024)} mb , Progress ${((d / metainfo.length) * 10000).toInt() / 100} %';
-    log(msg, name: runtimeType.toString());
+    _log.finer(msg);
     return true;
   }
 
