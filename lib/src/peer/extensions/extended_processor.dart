@@ -6,9 +6,12 @@ import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 
 mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
+  // Remote map of id to extension name
   final Map<int, String> _extendedEventMap = {};
   int _id = 1;
-  Map? _rawMap;
+
+  // The raw `m` dictionary returned from the remote peer
+  Map<String, dynamic> _rawMap = {};
   final Map<int, String> _localExtended = <int, String>{};
 
   Map<String, int> get localExtended {
@@ -19,20 +22,20 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
     return map;
   }
 
+  /// Called to register an extension
+  /// the id is auto incremented and starts with 1
   void registerExtend(String name) {
     _localExtended[_id] = name;
     _id++;
   }
 
   int? getExtendedEventId(String name) {
-    if (_rawMap != null) {
-      return _rawMap![name];
-    }
-    return null;
+    return _rawMap[name];
   }
 
   void processExtendMessage(int id, Uint8List message) {
     if (id == 0) {
+      // this is a handshake extended message
       var data = decode(message);
       processExtendHandshake(data);
     } else {
@@ -46,6 +49,7 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
 
   void processExtendHandshake(dynamic data) {
     if (data == null || !(data as Map<String, dynamic>).containsKey('m')) {
+      // this is not a handshake message
       return;
     }
     var m = data['m'] as Map<String, dynamic>;
@@ -60,7 +64,7 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
 
   void clearExtendedProcessors() {
     _extendedEventMap.clear();
-    _rawMap?.clear();
+    _rawMap.clear();
     _localExtended.clear();
     _id = 1;
   }
