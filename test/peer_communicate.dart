@@ -38,18 +38,13 @@ void main() async {
   serverPort = serverSocket.port;
   serverSocket.listen((socket) {
     print('client connected : ${socket.address}:${socket.port}');
-    var peer = Peer.newTCPPeer(
-        generatePeerId(),
-        CompactAddress(socket.address, socket.port),
-        infoBuffer,
-        piecesNum,
-        socket,
-        PeerSource.incoming);
+    var peer = Peer.newTCPPeer(CompactAddress(socket.address, socket.port),
+        infoBuffer, piecesNum, socket, PeerSource.incoming);
     var peerListener = peer.createListener();
     peerListener
       ..on<PeerConnected>((event) {
         callMap['connect1'] = true;
-        event.peer.sendHandShake();
+        event.peer.sendHandShake(generatePeerId());
       })
       ..on<PeerHandshakeEvent>((event) {
         callMap['handshake1'] = true;
@@ -146,7 +141,6 @@ void main() async {
 
   var pid = generatePeerId();
   var peer = Peer.newTCPPeer(
-      pid,
       CompactAddress(InternetAddress.tryParse('127.0.0.1')!, serverPort),
       infoBuffer,
       piecesNum,
@@ -157,7 +151,7 @@ void main() async {
     ..on<PeerConnected>((event) {
       callMap['connect2'] = true;
       print('connect server success');
-      event.peer.sendHandShake();
+      event.peer.sendHandShake(pid);
       // peer.dispose();
     })
     ..on<PeerHandshakeEvent>((event) {
@@ -194,8 +188,7 @@ void main() async {
       var view = ByteData.view(content.buffer);
       view.setUint8(0, event.index);
       view.setUint8(1, event.begin);
-      var id = event.peer.localPeerId;
-      var idContent = utf8.encode(id);
+      var idContent = utf8.encode(pid);
       for (var i = 0; i < idContent.length; i++) {
         view.setUint8(i + 2, idContent[i]);
       }

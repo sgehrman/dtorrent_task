@@ -131,10 +131,6 @@ abstract class Peer
   /// Torrent infohash buffer
   final List<int> _infoHashBuffer;
 
-  /// Local Peer Id
-  final String
-      _localPeerId; // The local peer ID. It is used when sending messages.
-
   String? _remotePeerId;
 
   /// has this peer send handshake message already?
@@ -195,8 +191,7 @@ abstract class Peer
   /// [Fast Extension (BEP 0006)](http://www.bittorrent.org/beps/bep_0006.html).
   /// [localEnableExtended] indicates whether local peers can use the
   /// [Extension Protocol](http://www.bittorrent.org/beps/bep_0010.html).
-  Peer(this._localPeerId, this.address, this._infoHashBuffer, this._piecesNum,
-      this.source,
+  Peer(this.address, this._infoHashBuffer, this._piecesNum, this.source,
       {this.type = PeerType.TCP,
       this.localEnableFastPeer = true,
       this.localEnableExtended = true,
@@ -204,31 +199,17 @@ abstract class Peer
     _remoteBitfield = Bitfield.createEmptyBitfield(_piecesNum);
   }
 
-  factory Peer.newTCPPeer(
-      String localPeerId,
-      CompactAddress address,
-      List<int> infoHashBuffer,
-      int piecesNum,
-      Socket? socket,
-      PeerSource source,
-      {bool enableExtend = true,
-      bool enableFast = true}) {
-    return _TCPPeer(
-        localPeerId, address, infoHashBuffer, piecesNum, socket, source,
+  factory Peer.newTCPPeer(CompactAddress address, List<int> infoHashBuffer,
+      int piecesNum, Socket? socket, PeerSource source,
+      {bool enableExtend = true, bool enableFast = true}) {
+    return _TCPPeer(address, infoHashBuffer, piecesNum, socket, source,
         enableExtend: enableExtend, enableFast: enableFast);
   }
 
-  factory Peer.newUTPPeer(
-      String localPeerId,
-      CompactAddress address,
-      List<int> infoHashBuffer,
-      int piecesNum,
-      UTPSocket? socket,
-      PeerSource source,
-      {bool enableExtend = true,
-      bool enableFast = true}) {
-    return _UTPPeer(
-        localPeerId, address, infoHashBuffer, piecesNum, socket, source,
+  factory Peer.newUTPPeer(CompactAddress address, List<int> infoHashBuffer,
+      int piecesNum, UTPSocket? socket, PeerSource source,
+      {bool enableExtend = true, bool enableFast = true}) {
+    return _UTPPeer(address, infoHashBuffer, piecesNum, socket, source,
         enableExtend: enableExtend, enableFast: enableFast);
   }
 
@@ -248,8 +229,6 @@ abstract class Peer
   }
 
   String? get remotePeerId => _remotePeerId;
-
-  String get localPeerId => _localPeerId;
 
   /// Requests received from the remote peer.
   List<List<int>> get remoteRequestBuffer => _remoteRequestBuffer;
@@ -469,7 +448,7 @@ abstract class Peer
   void _processMessage(int? id, Uint8List? message) {
     if (id == null) {
       _log.fine('process keep alive $address');
-      events.emit(PeerKeepAlive());
+      events.emit(PeerKeepAlive(this));
       return;
     } else {
       switch (id) {
@@ -603,13 +582,13 @@ abstract class Peer
     }
     if (requestIndex != null) {
       _remoteRequestBuffer.removeAt(requestIndex);
-      events.emit(PeerCancelEvent(index, begin, length));
+      events.emit(PeerCancelEvent(this, index, begin, length));
     }
   }
 
   void _processPortChange(int port) {
     if (address.port == port) return;
-    events.emit(PeerPortChanged(port));
+    events.emit(PeerPortChanged(this, port));
   }
 
   void _processHaveAll() {
@@ -666,7 +645,7 @@ abstract class Peer
     var length = view.getUint32(8);
     if (removeRequest(index, begin, length) != null) {
       startRequestDataTimeout();
-      events.emit(PeerRejectEvent(index, begin, length));
+      events.emit(PeerRejectEvent(this, index, begin, length));
     } else {
       // It's possible that the peer was deleted, but the reject message arrived too late.
       // dispose('Never send request ($index,$begin) but receive a rejection');
@@ -849,7 +828,7 @@ abstract class Peer
   /// Send a handshake message.
   ///
   /// After sending the handshake message, this method will also proactively send the bitfield and have messages to the remote peer.
-  void sendHandShake() {
+  void sendHandShake(String localPeerId) {
     if (_handShaked) return;
     var message = <int>[];
     message.addAll(HAND_SHAKE_HEAD);
@@ -862,7 +841,7 @@ abstract class Peer
     }
     message.addAll(reserved);
     message.addAll(_infoHashBuffer);
-    message.addAll(utf8.encode(_localPeerId));
+    message.addAll(utf8.encode(localPeerId));
     sendByteMessage(message);
     _startToCountdown();
     _handShaked = true;
@@ -1233,10 +1212,10 @@ class TCPConnectException implements Exception {
 
 class _TCPPeer extends Peer {
   Socket? _socket;
-  _TCPPeer(String localPeerId, CompactAddress address, List<int> infoHashBuffer,
-      int piecesNum, this._socket, PeerSource source,
+  _TCPPeer(CompactAddress address, List<int> infoHashBuffer, int piecesNum,
+      this._socket, PeerSource source,
       {bool enableExtend = true, bool enableFast = true})
-      : super(localPeerId, address, infoHashBuffer, piecesNum, source,
+      : super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.TCP,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast);
@@ -1285,7 +1264,6 @@ class _UTPPeer extends Peer {
   UTPSocketClient? _client;
   UTPSocket? _socket;
   _UTPPeer(
-    String localPeerId,
     CompactAddress address,
     List<int> infoHashBuffer,
     int piecesNum,
@@ -1293,7 +1271,7 @@ class _UTPPeer extends Peer {
     PeerSource source, {
     bool enableExtend = true,
     bool enableFast = true,
-  }) : super(localPeerId, address, infoHashBuffer, piecesNum, source,
+  }) : super(address, infoHashBuffer, piecesNum, source,
             type: PeerType.UTP,
             localEnableExtended: enableExtend,
             localEnableFastPeer: enableFast);

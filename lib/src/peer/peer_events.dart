@@ -23,19 +23,30 @@ class PeerConnected implements PeerEvent {
   PeerConnected(this.peer);
 }
 
-class PeerKeepAlive implements PeerEvent {}
+class PeerKeepAlive implements PeerEvent {
+  final Peer peer;
+
+  PeerKeepAlive(this.peer);
+}
 
 class PeerCancelEvent implements PeerEvent {
+  final Peer peer;
   final int index;
   final int begin;
   final int length;
 
-  PeerCancelEvent(this.index, this.begin, this.length);
+  PeerCancelEvent(
+    this.peer,
+    this.index,
+    this.begin,
+    this.length,
+  );
 }
 
 class PeerPortChanged implements PeerEvent {
+  final Peer peer;
   final int port;
-  PeerPortChanged(this.port);
+  PeerPortChanged(this.peer, this.port);
 }
 
 class PeerHaveAll implements PeerEvent {
@@ -58,11 +69,12 @@ class PeerSuggestPiece implements PeerEvent {
 }
 
 class PeerRejectEvent implements PeerEvent {
+  final Peer peer;
   final int index;
   final int begin;
   final int length;
 
-  PeerRejectEvent(this.index, this.begin, this.length);
+  PeerRejectEvent(this.peer, this.index, this.begin, this.length);
 }
 
 class PeerAllowFast implements PeerEvent {
@@ -121,17 +133,21 @@ class PeerDisposeEvent implements PeerEvent {
 // extended processor events
 
 class ExtendedEvent implements PeerEvent {
+  final Peer peer;
   String eventName;
   dynamic data;
   ExtendedEvent(
+    this.peer,
     this.eventName,
     this.data,
   );
 }
 
 class RequestTimeoutEvent implements PeerEvent {
+  final Peer peer;
   List<List<int>> requests;
   RequestTimeoutEvent(
     this.requests,
+    this.peer,
   );
 }

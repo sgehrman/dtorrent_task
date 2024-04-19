@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:dtorrent_task/src/peer/peer_base.dart';
 import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 
@@ -81,7 +82,8 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
       times++;
       _rto *= 2;
       _allowWindowSize = DEFAULT_REQUEST_LENGTH;
-      events.emit(RequestTimeoutEvent(timeoutR));
+      //TODO: remove the need for casting
+      events.emit(RequestTimeoutEvent(timeoutR, this as Peer));
       startRequestDataTimeout(times);
     });
   }

@@ -1,11 +1,17 @@
-abstract class PeersManagerEvent {}
+import 'package:dtorrent_task/src/peer/peer.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
 
-class AllComplete implements PeersManagerEvent {}
+abstract class PeersManagerEvent extends PeerEvent {}
 
-class RecievedBlock implements PeersManagerEvent {
-  final int index;
-  final int begin;
-  final List<int> block;
+class UpdateUploaded implements PeersManagerEvent {
+  final int uploaded;
 
-  RecievedBlock(this.index, this.begin, this.block);
+  UpdateUploaded(this.uploaded);
+}
+
+class PieceRequest implements PeersManagerEvent {
+  final Peer peer;
+  final int piece;
+
+  PieceRequest(this.peer, this.piece);
 }

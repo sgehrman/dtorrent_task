@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:dtorrent_task/src/peer/peer_base.dart';
 import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 
@@ -37,7 +38,8 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
     } else {
       var name = _localExtended[id];
       if (name != null) {
-        events.emit(ExtendedEvent(name, message));
+        //TODO: remove the need for casting
+        events.emit(ExtendedEvent(this as Peer, name, message));
       }
     }
   }
@@ -52,7 +54,8 @@ mixin ExtendedProcessor on EventsEmittable<PeerEvent> {
       if (value == 0) return;
       _extendedEventMap[value] = key;
     });
-    events.emit(ExtendedEvent('handshake', data));
+    //TODO: remove the need for casting
+    events.emit(ExtendedEvent(this as Peer, 'handshake', data));
   }
 
   void clearExtendedProcessors() {

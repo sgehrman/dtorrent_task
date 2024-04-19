@@ -21,3 +21,5 @@ class TaskFileCompleted implements TaskEvent {
 }
 
 class StateFileUpdated implements DownloadFileManagerEvent, TaskEvent {}
+
+class AllComplete implements TaskEvent {}

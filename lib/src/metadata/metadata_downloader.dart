@@ -148,12 +148,10 @@ class MetadataDownloader
     if (_peersAddress.add(address)) {
       Peer? peer;
       if (type == PeerType.TCP) {
-        peer = Peer.newTCPPeer(
-            _localPeerId, address, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newTCPPeer(address, _infoHashBuffer, 0, socket, source);
       }
       if (type == PeerType.UTP) {
-        peer = Peer.newUTPPeer(
-            _localPeerId, address, _infoHashBuffer, 0, socket, source);
+        peer = Peer.newUTPPeer(address, _infoHashBuffer, 0, socket, source);
       }
       if (peer != null) _hookPeer(peer);
     }
@@ -194,7 +192,7 @@ class MetadataDownloader
   void _peerConnected(Peer peer) {
     if (!_running) return;
     _activePeers.add(peer);
-    peer.sendHandShake();
+    peer.sendHandShake(_localPeerId);
   }
 
   void _processPeerDispose(Peer peer, [dynamic reason]) {

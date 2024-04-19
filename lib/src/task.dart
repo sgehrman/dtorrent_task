@@ -6,7 +6,11 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/httpserver/server.dart';
 import 'package:dtorrent_task/src/lsd/lsd_events.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart';
 import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
+import 'package:dtorrent_task/src/piece/piece_base.dart';
+import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
+import 'package:dtorrent_task/src/peer/peer_events.dart' as peer_events;
 import 'package:dtorrent_task/src/piece/sequential_piece_selector.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
@@ -34,7 +38,11 @@ var _log = Logger('TorrentTask');
 abstract class TorrentTask with EventsEmittable<TaskEvent> {
   factory TorrentTask.newTask(Torrent metaInfo, String savePath,
       [bool stream = false]) {
-    return _TorrentTask(metaInfo, savePath, stream);
+    return _TorrentTask(
+      metaInfo,
+      savePath,
+      stream: stream,
+    );
   }
   void startAnnounceUrl(Uri url, Uint8List infoHash);
   Torrent get metaInfo;
@@ -138,6 +146,7 @@ class _TorrentTask
 
   PieceManager? _pieceManager;
 
+  @override
   PieceManager? get pieceManager => _pieceManager;
 
   DownloadFileManager? _fileManager;
@@ -148,6 +157,10 @@ class _TorrentTask
 
   bool stream;
 
+  /// The maximum size of the disk write cache.
+  int maxWriteBufferSize;
+
+  final _flushIndicesBuffer = <int>{};
   @override
   Iterable<Peer>? get activePeers => _peersManager?.activePeers;
 
@@ -173,12 +186,14 @@ class _TorrentTask
   final Set<InternetAddress> _comingIp = {};
 
   EventsListener<TorrentAnnounceEvent>? trackerListener;
-  EventsListener<PeersManagerEvent>? peersManagerListener;
+  EventsListener<peer_events.PeerEvent>? peersManagerListener;
   EventsListener<DownloadFileManagerEvent>? fileManagerListener;
+  EventsListener<PieceManagerEvent>? pieceManagerListener;
   EventsListener<LSDEvent>? lsdListener;
   EventsListener<DHTEvent>? _dhtListener;
 
-  _TorrentTask(this._metaInfo, this._savePath, [this.stream = false]) {
+  _TorrentTask(this._metaInfo, this._savePath,
+      {this.maxWriteBufferSize = MAX_WRITE_BUFFER_SIZE, this.stream = false}) {
     _peerId = generatePeerId();
   }
 
@@ -233,8 +248,7 @@ class _TorrentTask
         _stateFile!.bitfield);
     _fileManager ??= await DownloadFileManager.createFileManager(
         model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
-    _peersManager ??= PeersManager(
-        _peerId, _pieceManager!, _pieceManager!, _fileManager!, model);
+    _peersManager ??= PeersManager(_peerId, model);
 
     return _peersManager!;
   }
@@ -302,7 +316,7 @@ class _TorrentTask
         type: type, socket: socket);
   }
 
-  void _whenTaskDownloadComplete(AllComplete event) async {
+  void _whenTaskDownloadComplete() async {
     await _peersManager
         ?.disposeAllSeeder('Download complete,disconnect seeder');
     await _tracker?.complete();
@@ -425,18 +439,34 @@ class _TorrentTask
     trackerListener = _tracker?.createListener();
     peersManagerListener = _peersManager?.createListener();
     fileManagerListener = _fileManager?.createListener();
+    pieceManagerListener = _pieceManager?.createListener();
     lsdListener = _lsd?.createListener();
     trackerListener?.on<AnnouncePeerEventEvent>(_processTrackerPeerEvent);
 
     peersManagerListener
-      ?..on<AllComplete>(_whenTaskDownloadComplete)
-      ..on<RecievedBlock>(
-        (event) => pieceManager?.processReceivedBlock(
-            event.index, event.begin, event.block),
-      );
+      ?..on<PeerAllowFast>(_processAllowFast)
+      ..on<PeerRejectEvent>(_processRejectRequest)
+      ..on<PeerDisposeEvent>(_processPeerDispose)
+      ..on<PeerPieceEvent>(_processReceivePiece)
+      ..on<PeerRequestEvent>(_processPeerRequest)
+      ..on<PeerHandshakeEvent>(_processPeerHandshake)
+      ..on<PeerBitfieldEvent>(_processBitfieldUpdate)
+      ..on<PeerHaveAll>(_processHaveAll)
+      ..on<PeerHaveNone>(_processHaveNone)
+      ..on<PeerChokeChanged>(_processChokeChange)
+      ..on<PeerHaveEvent>(_processHaveUpdate)
+      ..on<RequestTimeoutEvent>(
+          (event) => _processRequestTimeout(event.peer, event.requests))
+      ..on<UpdateUploaded>(
+          (event) => _fileManager?.updateUpload(event.uploaded));
     fileManagerListener
       ?..on<DownloadManagerFileCompleted>(_whenFileDownloadComplete)
-      ..on<StateFileUpdated>((event) => events.emit(StateFileUpdated()));
+      ..on<StateFileUpdated>((event) => events.emit(StateFileUpdated()))
+      ..on<SubPieceReadCompleted>((event) => _peersManager
+          ?.readSubPieceComplete(event.pieceIndex, event.begin, event.block));
+    pieceManagerListener
+      ?..on<PieceAccepted>((event) => processPieceAccepted(event.pieceIndex))
+      ..on<PieceRejected>((event) => null);
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
     _lsd?.port = _serverSocket?.port;
     _lsd?.start();
@@ -458,6 +488,265 @@ class _TorrentTask
     return map;
   }
 
+  void processPieceRejected(int index) {
+    var piece = _pieceManager?[index];
+    if (piece == null) return;
+
+    // TODO: still need optimizing for last pieces
+    for (var peer in piece.availablePeers) {
+      requestPieces(peer, piece.index);
+    }
+  }
+
+  Future<void> processPieceAccepted(int index) async {
+    var piece = _pieceManager?[index];
+    if (piece == null ||
+        piece.block == null ||
+        _fileManager == null ||
+        _pieceManager == null) return;
+
+    if (_fileManager!.localHave(index)) return;
+    var written = await _fileManager!.writeFile(
+      index,
+      0,
+      piece.block!,
+    );
+
+    if (!written) return;
+    _pieceManager!.processPieceWriteComplete(index);
+    await _fileManager!.updateBitfield(index);
+    _peersManager?.sendHaveToAll(index);
+    _flushIndicesBuffer.add(index);
+    await _flushFiles(_flushIndicesBuffer);
+    if (_fileManager!.isAllComplete) {
+      events.emit(AllComplete());
+      _whenTaskDownloadComplete();
+    }
+  }
+
+  Future _flushFiles(Set<int> indices) async {
+    if (indices.isEmpty || _fileManager == null) return;
+    var piecesSize = _metaInfo.pieceLength;
+    var buffer = indices.length * piecesSize;
+    if (buffer >= maxWriteBufferSize || _fileManager!.isAllComplete) {
+      var temp = Set<int>.from(indices);
+      indices.clear();
+      await _fileManager?.flushFiles(temp);
+    }
+    return;
+  }
+
+  /// Even if the other peer has choked me, I can still download.
+  void _processAllowFast(PeerAllowFast event) {
+    var piece = _pieceManager?[event.index];
+    if (piece != null && piece.haveAvailableSubPiece()) {
+      piece.addAvailablePeer(event.peer);
+      _pieceManager?.processDownloadingPiece(event.index);
+      requestPieces(event.peer, event.index);
+    }
+  }
+
+  void _processRejectRequest(PeerRejectEvent event) {
+    var piece = _pieceManager?[event.index];
+    piece?.pushSubPieceLast(event.begin ~/ DEFAULT_REQUEST_LENGTH);
+  }
+
+  void _processPeerDispose(PeerDisposeEvent event) {
+    if (_pieceManager == null) return;
+    var bufferRequests = event.peer.requestBuffer;
+
+    _pushSubPiecesBack(bufferRequests);
+    var completedPieces = event.peer.remoteCompletePieces;
+    for (var index in completedPieces) {
+      _pieceManager![index]?.removeAvailablePeer(event.peer);
+    }
+  }
+
+  void _pushSubPiecesBack(List<List<int>> requests) {
+    if (requests.isEmpty || _pieceManager == null) return;
+    for (var element in requests) {
+      var pieceIndex = element[0];
+      var begin = element[1];
+      // TODO This is dangerous here. Currently, we are dividing a piece into 16 KB chunks. What if it's not the case?
+      var piece = _pieceManager![pieceIndex];
+      var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+      piece?.pushSubPiece(subindex);
+    }
+  }
+
+  void _processReceivePiece(PeerPieceEvent event) {
+    if (_pieceManager == null || _peersManager == null) return;
+
+    var piece = _pieceManager![event.index];
+    var i = event.index;
+    if (piece != null) {
+      var blockStart = piece.offset + event.begin;
+      var blockEnd = blockStart + event.block.length;
+      if (blockEnd > piece.end) {
+        _log.info('Error:', 'Piece overlaps with next piece');
+        // will request the same piece below
+      } else {
+        if (!piece.isCompleted) {
+          pieceManager?.processReceivedBlock(
+              event.index, event.begin, event.block);
+        }
+        // request available subpiece
+        if (piece.haveAvailableSubPiece()) i = -1;
+      }
+    }
+
+    Timer.run(() => requestPieces(event.peer, i));
+  }
+
+  void _processPeerHandshake(PeerHandshakeEvent event) {
+    if (_fileManager == null) return;
+    event.peer.sendBitfield(_fileManager!.localBitfield);
+  }
+
+  void _processPeerRequest(PeerRequestEvent event) {
+    if (_fileManager == null ||
+        _peersManager == null ||
+        _peersManager!.isPaused) return;
+    _fileManager!.readFile(event.index, event.begin, event.length);
+  }
+
+  void _processHaveAll(PeerHaveAll event) {
+    _processBitfieldUpdate(
+        PeerBitfieldEvent(event.peer, event.peer.remoteBitfield));
+  }
+
+  void _processHaveNone(PeerHaveNone event) {
+    _processBitfieldUpdate(PeerBitfieldEvent(event.peer, null));
+  }
+
+  void _processBitfieldUpdate(PeerBitfieldEvent bitfieldEvent) {
+    if (_fileManager == null) return;
+    if (bitfieldEvent.bitfield != null) {
+      if (bitfieldEvent.peer.interestedRemote) return;
+      if (_fileManager!.isAllComplete && bitfieldEvent.peer.isSeeder) {
+        bitfieldEvent.peer.dispose(BadException(
+            "Do not connect to Seeder if the download is already completed"));
+        return;
+      }
+      for (var i = 0; i < _fileManager!.piecesNumber; i++) {
+        if (bitfieldEvent.bitfield!.getBit(i)) {
+          if (!bitfieldEvent.peer.interestedRemote &&
+              !_fileManager!.localHave(i)) {
+            bitfieldEvent.peer.sendInterested(true);
+            return;
+          }
+        }
+      }
+    }
+    bitfieldEvent.peer.sendInterested(false);
+  }
+
+  void _processHaveUpdate(PeerHaveEvent event) {
+    if (pieceManager == null || _fileManager == null || _peersManager == null) {
+      return;
+    }
+    var canRequest = false;
+    for (var index in event.indices) {
+      if (_pieceManager![index] == null) continue;
+
+      if (!_fileManager!.localHave(index)) {
+        // if peer is choking us just send interested
+        if (event.peer.chokeMe) {
+          event.peer.sendInterested(true);
+        } else {
+          // not choking us, add the peer to the piece and request below
+          canRequest = true;
+          pieceManager![index]?.addAvailablePeer(event.peer);
+        }
+      }
+    }
+    if (canRequest && event.peer.isSleeping) {
+      // peer doesn't have requests, so we can request
+      Timer.run(() => requestPieces(event.peer));
+    }
+  }
+
+  void _processChokeChange(PeerChokeChanged event) {
+    if (_pieceManager == null || _peersManager == null) return;
+    // Update available peers for pieces.
+    if (!event.choked) {
+      var completedPieces = event.peer.remoteCompletePieces;
+      for (var index in completedPieces) {
+        _pieceManager![index]?.addAvailablePeer(event.peer);
+      }
+      // Start requesting
+      Timer.run(() => requestPieces(event.peer));
+    } else {
+      var completedPieces = event.peer.remoteCompletePieces;
+      for (var index in completedPieces) {
+        _pieceManager![index]?.removeAvailablePeer(event.peer);
+      }
+    }
+  }
+
+  void _processRequestTimeout(Peer peer, List<List<int>> requests) {
+    if (_pieceManager == null || _peersManager == null) return;
+    var flag = false;
+    for (var request in requests) {
+      if (request[4] >= 3) {
+        flag = true;
+        Timer.run(() => peer.requestCancel(request[0], request[1], request[2]));
+        var index = request[0];
+        var begin = request[1];
+        var subindex = begin ~/ DEFAULT_REQUEST_LENGTH;
+        var piece = _pieceManager![index];
+        piece?.pushSubPiece(subindex);
+      }
+    }
+    // Wake up other possibly idle peers.
+    if (flag) {
+      for (var p in _peersManager!.activePeers) {
+        if (p != peer && p.isSleeping) {
+          // TODO: should we request from all peers ?
+          Timer.run(() => requestPieces(p));
+        }
+      }
+    }
+  }
+
+  void requestPieces(Peer peer, [int pieceIndex = -1]) async {
+    if (_pieceManager == null || _peersManager == null) return;
+    if (_peersManager!.addPausedRequest(peer, pieceIndex)) return;
+    Piece? piece;
+    if (pieceIndex != -1) {
+      // a specific piece requested
+      piece = _pieceManager![pieceIndex];
+      // if the piece is available but doesn't have available subpiece,
+      // select a different subpiece
+      if (piece != null && !piece.haveAvailableSubPiece()) {
+        piece = _pieceManager!
+            .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
+      }
+    } else {
+      // no specific piece requested, select one
+      piece = _pieceManager!
+          .selectPiece(peer, _pieceManager!, peer.remoteSuggestPieces);
+    }
+
+    // at this point we have a piece that we know is:
+    // - available in the peer
+    // - have subPieces
+    if (piece == null) return;
+
+    var subIndex = piece.popSubPiece();
+    if (subIndex == null) return;
+    var size = DEFAULT_REQUEST_LENGTH; // Block size is calculated dynamically.
+    var begin = subIndex * size;
+    if ((begin + size) > piece.byteLength) {
+      size = piece.byteLength - begin;
+    }
+    if (!peer.sendRequest(piece.index, begin, size)) {
+      piece.pushSubPiece(subIndex);
+    } else {
+      Timer.run(() => requestPieces(peer, pieceIndex));
+    }
+  }
+
   @override
   Future stop([bool force = false]) async {
     await _tracker?.stop(force);
@@ -467,6 +756,8 @@ class _TorrentTask
   }
 
   Future<void> dispose() async {
+    await _flushFiles(_flushIndicesBuffer);
+    _flushIndicesBuffer.clear();
     events.dispose();
     _dhtRepeatTimer?.cancel();
     _dhtRepeatTimer = null;
@@ -478,6 +769,7 @@ class _TorrentTask
     // This is in order, first stop the tracker, then stop listening on the server socket and all peers, finally close the file system.
     await _tracker?.dispose();
     _tracker = null;
+
     await _peersManager?.dispose();
     _peersManager = null;
     _serverSocketListener?.cancel();
