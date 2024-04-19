@@ -6,11 +6,12 @@ import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/file/download_file_manager_events.dart';
 import 'package:dtorrent_task/src/httpserver/server.dart';
 import 'package:dtorrent_task/src/lsd/lsd_events.dart';
-import 'package:dtorrent_task/src/peer/peer_events.dart';
-import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task/src/peer/swarm/peers_manager_events.dart';
 import 'package:dtorrent_task/src/piece/piece_base.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
-import 'package:dtorrent_task/src/peer/peer_events.dart' as peer_events;
+import 'package:dtorrent_task/src/peer/protocol/peer_events.dart'
+    as peer_events;
 import 'package:dtorrent_task/src/piece/sequential_piece_selector.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';
@@ -22,10 +23,10 @@ import 'package:events_emitter2/events_emitter2.dart';
 import 'file/download_file_manager.dart';
 import 'file/state_file.dart';
 import 'lsd/lsd.dart';
-import 'peer/peer.dart';
+import 'peer/protocol/peer.dart';
 import 'piece/base_piece_selector.dart';
 import 'piece/piece_manager.dart';
-import 'peer/peers_manager.dart';
+import 'peer/swarm/peers_manager.dart';
 import 'utils.dart';
 
 const MAX_PEERS = 50;

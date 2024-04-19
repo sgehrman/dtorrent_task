@@ -6,14 +6,14 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task/dtorrent_task.dart';
-import 'package:dtorrent_task/src/peer/peer_events.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 import 'package:utp_protocol/utp_protocol.dart';
 
-import 'congestion_control.dart';
-import 'speed_calculator.dart';
-import 'extended_processor.dart';
+import '../congestion_control.dart';
+import '../speed_calculator.dart';
+import '../extensions/extended_processor.dart';
 
 const KEEP_ALIVE_MESSAGE = [0, 0, 0, 0];
 

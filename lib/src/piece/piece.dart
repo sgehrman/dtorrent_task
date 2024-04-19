@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
-import '../peer/peer.dart';
+import '../peer/protocol/peer.dart';
 import '../utils.dart';
 
 class Piece {

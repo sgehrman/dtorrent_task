@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 
-import '../peer/peer.dart';
+import '../protocol/peer.dart';
 
 const pex_flag_prefers_encryption = 0x01;
 

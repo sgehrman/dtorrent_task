@@ -6,7 +6,7 @@ import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_task/src/metadata/metadata_downloader.dart';
 import 'package:dtorrent_task/src/metadata/metadata_downloader_events.dart';
-import 'package:dtorrent_task/src/peer/peer.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer.dart';
 import 'package:dtorrent_task/src/task.dart';
 import 'package:dtorrent_task/src/task_events.dart';
 import 'package:dtorrent_tracker/dtorrent_tracker.dart';

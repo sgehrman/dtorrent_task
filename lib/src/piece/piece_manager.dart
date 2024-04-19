@@ -1,5 +1,5 @@
 import 'package:dtorrent_parser/dtorrent_parser.dart';
-import 'package:dtorrent_task/src/peer/peer.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer.dart';
 import 'package:dtorrent_task/src/piece/piece_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';

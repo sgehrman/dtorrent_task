@@ -4,14 +4,14 @@ import 'dart:io';
 import 'package:dart_ipify/dart_ipify.dart';
 import 'package:dtorrent_parser/dtorrent_parser.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
-import 'package:dtorrent_task/src/peer/peer_events.dart';
-import 'package:dtorrent_task/src/peer/peers_manager_events.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer_events.dart';
+import 'package:dtorrent_task/src/peer/swarm/peers_manager_events.dart';
 import 'package:events_emitter2/events_emitter2.dart';
 import 'package:logging/logging.dart';
 
-import 'peer.dart';
-import '../peer/pex.dart';
-import '../peer/holepunch.dart';
+import '../protocol/peer.dart';
+import '../extensions/pex.dart';
+import '../extensions/holepunch.dart';
 
 const MAX_ACTIVE_PEERS = 50;
 

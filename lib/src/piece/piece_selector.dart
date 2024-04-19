@@ -1,4 +1,4 @@
-import 'package:dtorrent_task/src/peer/peer.dart';
+import 'package:dtorrent_task/src/peer/protocol/peer.dart';
 
 import 'piece.dart';
 import 'piece_provider.dart';
