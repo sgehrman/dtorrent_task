@@ -1,6 +1,6 @@
 name: dtorrent_task
 description: BitTorrent download client package written by pure Dart language.
-version: 0.3.5
+version: 0.4.0
 repository: https://github.com/moham96/dtorrent_task
 issue_tracker: https://github.com/moham96/dtorrent_task/issues
 
@@ -13,7 +13,7 @@ dependencies:
   bittorrent_dht: ^0.0.10
   dtorrent_common: ^1.0.5
   b_encode_decode: ^1.0.4
-  utp_protocol: ^1.0.3
+  utp_protocol: ^1.0.4
   dart_ipify: ^1.1.1
   events_emitter2: ^1.0.3
   mime: ^1.0.4

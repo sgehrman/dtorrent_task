@@ -53,3 +53,17 @@
 
 ## 0.3.5
 - use more broad collection constraints
+
+## 0.4.0
+- enable utp
+- decouple some parts of the code
+- use logging package
+- select pieces when stream is seeking
+- cache piece in memory until it is validated then write to disk
+- enable lsd
+- fixes for PEX
+- emit useful events
+- add simple binary for testing
+- optimizing
+- fix memory leaks
+- some refactoring and cleanup
