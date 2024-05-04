@@ -500,16 +500,16 @@ class _TorrentTask
 
   Future<void> processPieceAccepted(int index) async {
     var piece = _pieceManager?[index];
-    if (piece == null ||
-        piece.block == null ||
-        _fileManager == null ||
-        _pieceManager == null) return;
+    if (piece == null || _fileManager == null || _pieceManager == null) return;
+
+    var block = piece.flush();
+    if (block == null) return;
 
     if (_fileManager!.localHave(index)) return;
     var written = await _fileManager!.writeFile(
       index,
       0,
-      piece.block!,
+      block,
     );
 
     if (!written) return;
