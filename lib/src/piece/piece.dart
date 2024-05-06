@@ -63,6 +63,7 @@ class Piece {
   }
 
   void init() {
+    if (flushed) return;
     _block ??= Uint8List(byteLength);
   }
 
