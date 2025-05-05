@@ -363,6 +363,10 @@ class _TorrentTask
       socket.close();
       return;
     }
+    print('hook utp');
+    print(socket.remoteAddress);
+    print(socket.address);
+
     if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.remoteAddress)) {
       socket.close();
       return;
@@ -382,6 +386,12 @@ class _TorrentTask
       socket.close();
       return;
     }
+
+    print('_hookInPeer');
+    print(socket.remoteAddress);
+    print(socket.address);
+
+
     if (_comingIp.length >= MAX_IN_PEERS || !_comingIp.add(socket.remoteAddress)) {
       socket.close();
       return;
