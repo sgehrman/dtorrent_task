@@ -16,7 +16,7 @@ dependencies:
   utp_protocol: ^1.0.4
   dart_ipify: ^1.1.1
   events_emitter2: ^1.0.4
-  mime: ^2.0.0
+  mime: ^1.0.4
   collection: ^1.19.1
   crypto: ^3.0.6
   args: ^2.7.0
