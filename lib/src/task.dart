@@ -455,7 +455,12 @@ class _TorrentTask
     state = TaskState.running;
     // Incoming peer:
     // SNG hoping this helps: (was 0) Recommend: 6881-6889
-    _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 6884);
+    // canceling download not releasting this port?  I had to add shared: true
+    _serverSocket ??= await ServerSocket.bind(
+      InternetAddress.anyIPv4,
+      6884,
+      shared: true,
+    );
     await _init(_metaInfo, _savePath);
     _serverSocketListener = _serverSocket?.listen(_hookInPeer);
     _utpServer ??= await ServerUTPSocket.bind(
