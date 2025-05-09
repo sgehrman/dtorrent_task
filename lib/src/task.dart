@@ -454,7 +454,8 @@ class _TorrentTask
   Future<Map> start() async {
     state = TaskState.running;
     // Incoming peer:
-    _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    // SNG hoping this helps: (was 0) Recommend: 6881-6889
+    _serverSocket ??= await ServerSocket.bind(InternetAddress.anyIPv4, 6884);
     await _init(_metaInfo, _savePath);
     _serverSocketListener = _serverSocket?.listen(_hookInPeer);
     _utpServer ??= await ServerUTPSocket.bind(
